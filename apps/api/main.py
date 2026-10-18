@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from apps.api.core.config import settings
 from apps.api.core.seed import init_db
-from apps.api.routers import health, organization, workforce
+from apps.api.routers import health, organization, workforce, projects, scrum
 
 # Ensure workspace root directory exists
 os.makedirs(settings.WORKSPACE_ROOT, exist_ok=True)
@@ -50,6 +50,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix=settings.API_V1_PREFIX)
 app.include_router(organization.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workforce.router, prefix=settings.API_V1_PREFIX)
+app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
+app.include_router(scrum.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 def root():

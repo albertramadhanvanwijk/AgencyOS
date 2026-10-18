@@ -4,7 +4,8 @@ from apps.api.core.database import engine, Base, SessionLocal
 from apps.api.models import (
     Department, JobRole, AIAgent, AgentProfileVersion, AgentSkill,
     AuditEvent, Project, Sprint, WorkItem,
-    ExecutionRun, RunLog, RunArtifact, QualityCheckResult
+    ExecutionRun, RunLog, RunArtifact, QualityCheckResult,
+    RecruitmentRequest
 )
 
 def seed_database(db: Session):
@@ -556,6 +557,36 @@ new file mode 100644
         qc2_3 = QualityCheckResult(run_id=run_2.id, check_name="WCAG_CONTRAST", status="passed", details={"ratio": "4.8:1", "level": "AA"}, is_simulated=True)
         qc2_4 = QualityCheckResult(run_id=run_2.id, check_name="UNIT_TESTS", status="passed", details={"passed": 12, "total": 12}, is_simulated=True)
         db.add_all([qc2_1, qc2_2, qc2_3, qc2_4])
+        db.commit()
+
+    # Seed sample RecruitmentRequest if not exists
+    if not db.query(RecruitmentRequest).filter(RecruitmentRequest.id == "req-rec-001").first():
+        req_sample = RecruitmentRequest(
+            id="req-rec-001",
+            role_id="role-qa",
+            department_id="dept-qa",
+            proposed_agent_name="Vanguard",
+            rationale="Sustained demand for automated security sandbox qualification and threat penetration testing on PRJ-CORE and PRJ-EVAL.",
+            requested_by="Technical Lead / Scribe",
+            required_skills=["Security & Threat Modeling", "Sandbox Containment", "Automated QA"],
+            status="pending_approval",
+            policy_basis="POL-AGENT-RECRUITMENT-V1"
+        )
+        db.add(req_sample)
+        db.flush()
+
+        db.add(AuditEvent(
+            actor="Technical Lead / Scribe",
+            action="RECRUITMENT_REQUEST_CREATED",
+            target_type="RECRUITMENT_REQUEST",
+            target_id=req_sample.id,
+            policy_basis="POL-AGENT-RECRUITMENT-V1",
+            details={
+                "proposed_agent_name": req_sample.proposed_agent_name,
+                "role_id": req_sample.role_id,
+                "skills": req_sample.required_skills
+            }
+        ))
         db.commit()
 
 def init_db():

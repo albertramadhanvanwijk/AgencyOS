@@ -1139,12 +1139,21 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setActiveRun(null)}
-                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <Link
+                  href={`/projects/${projectId}/runs/${activeRun.id}`}
+                  className="px-2.5 py-1 rounded text-xs font-medium bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent text-accent transition-colors flex items-center space-x-1"
+                >
+                  <span>Open Full Page</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+                <button
+                  onClick={() => setActiveRun(null)}
+                  className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Stepper Bar */}

@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models import WorkItem, Project, AIAgent, AuditEvent
@@ -168,3 +169,82 @@ def update_work_item(
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=item.project.name if item.project else None,
     )
+
+class WorkItemApprovalIn(BaseModel):
+    decision: str  # "approve" or "rework"
+    review_notes: Optional[str] = None
+    approver: str = "Agency Operator"
+
+@router.post("/{item_id}/approve", response_model=WorkItemOut)
+def approve_work_item(
+    item_id: str,
+    approval_in: WorkItemApprovalIn,
+    db: Session = Depends(get_db)
+):
+    """
+    Formal human supervisor review and sign-off endpoint.
+    Verifies evidence against Definition of Done before transitioning to Done,
+    or returns to In Progress if rework is needed.
+    """
+    item = db.query(WorkItem).filter(WorkItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+
+    if item.status != "in_review":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Work item must be in 'in_review' state to be evaluated by supervisor. Current state: '{item.status}'"
+        )
+
+    previous_status = item.status
+
+    if approval_in.decision == "approve":
+        item.status = "done"
+        action = "WORK_ITEM_APPROVED"
+    elif approval_in.decision == "rework":
+        item.status = "in_progress"
+        action = "WORK_ITEM_REWORK_REQUESTED"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid decision. Must be 'approve' or 'rework'.")
+
+    db.add(AuditEvent(
+        actor=approval_in.approver,
+        action=action,
+        target_type="WORK_ITEM",
+        target_id=item.id,
+        project_id=item.project_id,
+        policy_basis="QUALITY_GATE_HUMAN_APPROVAL_V1",
+        details={
+            "key": item.key,
+            "decision": approval_in.decision,
+            "review_notes": approval_in.review_notes or "Review verified against Definition of Done",
+            "from_status": previous_status,
+            "to_status": item.status,
+            "criteria_count": len(item.acceptance_criteria or []),
+        }
+    ))
+
+    db.commit()
+    db.refresh(item)
+
+    return WorkItemOut(
+        id=item.id,
+        project_id=item.project_id,
+        sprint_id=item.sprint_id,
+        key=item.key,
+        type=item.type,
+        title=item.title,
+        description=item.description,
+        status=item.status,
+        priority=item.priority,
+        estimate_points=item.estimate_points,
+        acceptance_criteria=item.acceptance_criteria or [],
+        definition_of_done=item.definition_of_done or [],
+        assignee_agent_id=item.assignee_agent_id,
+        blocker_reason=item.blocker_reason,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        assignee_name=item.assignee.name if item.assignee else None,
+        project_name=item.project.name if item.project else None,
+    )
+

@@ -240,6 +240,19 @@ def create_project_work_item(
         assignee_agent_id=item_in.assignee_agent_id,
     )
     db.add(item)
+    db.flush()
+
+    # Audit provenance for work item creation
+    db.add(AuditEvent(
+        actor="Agency Operator",
+        action="WORK_ITEM_CREATED",
+        target_type="WORK_ITEM",
+        target_id=item.id,
+        project_id=p.id,
+        policy_basis="SCRUM_WORK_ITEM_CREATION_POLICY",
+        details={"key": generated_key, "title": item.title, "type": item.type}
+    ))
+
     db.commit()
     db.refresh(item)
 

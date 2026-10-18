@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ThemeProvider } from "../components/theme/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,8 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full min-h-screen antialiased flex flex-col bg-canvas-light text-textPrimary-light dark:bg-canvas-dark dark:text-textPrimary-dark">
-        {children}
+      <body className="h-full min-h-screen antialiased bg-canvas-light text-textPrimary-light dark:bg-canvas-dark dark:text-textPrimary-dark">
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,19 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { 
-  Activity, 
-  CheckCircle2, 
-  AlertCircle, 
-  ShieldCheck, 
-  Terminal, 
-  Moon, 
-  Sun, 
-  FolderKanban, 
-  Users, 
-  Layers, 
-  GitBranch, 
-  Cpu 
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { AppShell } from "../components/layout/AppShell";
+import { PageHeader } from "../components/layout/PageHeader";
+import { StatusBadge } from "../components/ui/StatusBadge";
+import { CapacityIndicator } from "../components/ui/CapacityIndicator";
+import { PriorityIndicator } from "../components/ui/PriorityIndicator";
+import { Button } from "../components/ui/Button";
+import {
+  FolderKanban,
+  Users,
+  Cpu,
+  ArrowRight,
+  ShieldCheck,
+  Activity,
+  Plus,
+  RefreshCw,
+  Terminal,
 } from "lucide-react";
 
 interface HealthStatus {
@@ -27,192 +31,249 @@ interface HealthStatus {
   };
 }
 
-export default function Home() {
+export default function OverviewPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isDark, setIsDark] = useState(false);
 
-  useEffect(() => {
-    // Check system preference or default
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setIsDark(true);
-      document.documentElement.classList.add("dark");
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (!isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+  const fetchHealth = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("http://127.0.0.1:8000/api/v1/health");
+      const data = await res.json();
+      setHealth(data);
+    } catch {
+      setHealth(null);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    async function fetchHealth() {
-      try {
-        setLoading(true);
-        const res = await fetch("http://127.0.0.1:8000/api/v1/health");
-        if (!res.ok) {
-          throw new Error(`API responded with status: ${res.status}`);
-        }
-        const data = await res.json();
-        setHealth(data);
-        setError(null);
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError("Failed to connect to AgencyOS backend API");
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchHealth();
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Navigation Bar */}
-      <header className="h-12 border-b border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark px-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 font-semibold text-sm tracking-tight">
-            <span className="w-2 h-2 rounded-full bg-accent"></span>
-            <span>AgencyOS</span>
+    <AppShell>
+      {/* Page Header */}
+      <PageHeader
+        title="Agency Overview"
+        description="Operational portfolio health, supervised workforce capacity, and active Scrum delivery."
+        badge={
+          <StatusBadge
+            variant={health?.status === "healthy" ? "success" : "warning"}
+            label={health?.status === "healthy" ? "All Systems Operational" : "System Degraded"}
+          />
+        }
+        actions={
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchHealth}
+              isLoading={loading}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+            >
+              Refresh
+            </Button>
+            <Link href="/projects">
+              <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />}>
+                New Project
+              </Button>
+            </Link>
           </div>
-          <span className="text-textMuted-light dark:text-textMuted-dark text-xs font-mono">v0.1.0-alpha</span>
+        }
+      />
+
+      {/* Operational Highlights Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Metric 1 */}
+        <div className="p-4 rounded-md border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-2">
+          <div className="flex items-center justify-between text-xs text-textMuted-light dark:text-textMuted-dark">
+            <span className="font-medium">Active Projects</span>
+            <FolderKanban className="w-4 h-4 text-accent" />
+          </div>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-semibold tabular-nums">2</span>
+            <span className="text-xs text-status-success font-medium">On Track</span>
+          </div>
+          <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+            1 in Sprint, 1 Backlog Ready
+          </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          {/* Health Badge */}
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded border border-borderBase-light dark:border-borderBase-dark text-xs font-mono">
-            {loading ? (
-              <span className="text-textMuted-light dark:text-textMuted-dark flex items-center">
-                <span className="animate-spin mr-1">◓</span> Checking API...
-              </span>
-            ) : health?.status === "healthy" ? (
-              <span className="text-status-success flex items-center">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> API Online ({health.database.type})
-              </span>
-            ) : (
-              <span className="text-status-danger flex items-center">
-                <AlertCircle className="w-3.5 h-3.5 mr-1" /> API Degraded
-              </span>
-            )}
+        {/* Metric 2 */}
+        <div className="p-4 rounded-md border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-2">
+          <div className="flex items-center justify-between text-xs text-textMuted-light dark:text-textMuted-dark">
+            <span className="font-medium">Active Workforce</span>
+            <Users className="w-4 h-4 text-accent" />
           </div>
-
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className="p-1.5 rounded border border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-6">
-        {/* Banner / Stage Info */}
-        <div className="border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark rounded-md p-5">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center space-x-2">
-                <h1 className="text-lg font-semibold tracking-tight">Control Plane Foundation</h1>
-                <span className="px-2 py-0.5 rounded text-[11px] font-medium uppercase tracking-wider bg-accent-light dark:bg-accent-dark text-accent dark:text-white">
-                  Slice 1.1 Complete
-                </span>
-              </div>
-              <p className="text-xs text-textMuted-light dark:text-textMuted-dark max-w-2xl">
-                Monorepo skeleton established. Next.js App Router frontend and FastAPI backend communicating over typed endpoints with automated unit tests and dual-database support.
-              </p>
-            </div>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-semibold tabular-nums">4</span>
+            <span className="text-xs text-textMuted-light dark:text-textMuted-dark">Identities</span>
           </div>
+          <CapacityIndicator current={2} max={4} label="Agency Concurrency" />
         </div>
 
-        {/* Operational Modules Overview Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark p-4 rounded-md space-y-3">
-            <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark">
-              <FolderKanban className="w-4 h-4 text-accent" />
-              <span>Projects & Scrum</span>
-            </div>
+        {/* Metric 3 */}
+        <div className="p-4 rounded-md border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-2">
+          <div className="flex items-center justify-between text-xs text-textMuted-light dark:text-textMuted-dark">
+            <span className="font-medium">Pending Approvals</span>
+            <ShieldCheck className="w-4 h-4 text-status-warning" />
+          </div>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-2xl font-semibold tabular-nums">1</span>
+            <span className="text-xs text-status-warning font-medium">Awaiting Action</span>
+          </div>
+          <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+            Requires human policy sign-off
+          </p>
+        </div>
+
+        {/* Metric 4 */}
+        <div className="p-4 rounded-md border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-2">
+          <div className="flex items-center justify-between text-xs text-textMuted-light dark:text-textMuted-dark">
+            <span className="font-medium">Execution Engine</span>
+            <Cpu className="w-4 h-4 text-accent" />
+          </div>
+          <div className="flex items-baseline space-x-2">
+            <StatusBadge variant="simulated" label="MockEngineAdapter" />
+          </div>
+          <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+            Deterministic sandbox simulation
+          </p>
+        </div>
+      </div>
+
+      {/* Portfolio & Active Sprint Table */}
+      <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark overflow-hidden">
+        <div className="px-4 py-3 border-b border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+          <div className="space-y-0.5">
+            <h2 className="text-sm font-semibold tracking-tight">Active Projects Portfolio</h2>
             <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-              Isolated project repositories, Scrum backlogs, sprint planning, and bounded workspaces.
+              Status reflects verified evidence and quality gates.
             </p>
-            <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs">
-              <span className="text-textMuted-light dark:text-textMuted-dark">Target Phase:</span>
-              <span className="font-mono">Phase 3</span>
+          </div>
+          <Link href="/projects" className="text-xs text-accent hover:underline flex items-center font-medium">
+            View all <ArrowRight className="w-3 h-3 ml-1" />
+          </Link>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border-b border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-medium">
+              <tr>
+                <th className="py-2.5 px-4">Project Key</th>
+                <th className="py-2.5 px-4">Project Name</th>
+                <th className="py-2.5 px-4">Current Sprint</th>
+                <th className="py-2.5 px-4">Priority</th>
+                <th className="py-2.5 px-4">Health</th>
+                <th className="py-2.5 px-4">Assigned Agents</th>
+                <th className="py-2.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
+              <tr className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors">
+                <td className="py-3 px-4 font-mono font-semibold text-accent">PRJ-CORE</td>
+                <td className="py-3 px-4 font-medium">AgencyOS Core Platform</td>
+                <td className="py-3 px-4">Sprint 1: Foundation (65%)</td>
+                <td className="py-3 px-4">
+                  <PriorityIndicator level="critical" />
+                </td>
+                <td className="py-3 px-4">
+                  <StatusBadge variant="success" label="On Track" />
+                </td>
+                <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                  2 Agents active
+                </td>
+                <td className="py-3 px-4 text-right">
+                  <Link href="/projects">
+                    <Button variant="ghost" size="sm">
+                      Inspect
+                    </Button>
+                  </Link>
+                </td>
+              </tr>
+
+              <tr className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors">
+                <td className="py-3 px-4 font-mono font-semibold text-accent">PRJ-EVAL</td>
+                <td className="py-3 px-4 font-medium">Agent Qualification Benchmark</td>
+                <td className="py-3 px-4">Sprint 0: Sandbox Setup</td>
+                <td className="py-3 px-4">
+                  <PriorityIndicator level="medium" />
+                </td>
+                <td className="py-3 px-4">
+                  <StatusBadge variant="info" label="Planning" />
+                </td>
+                <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                  1 Agent assigned
+                </td>
+                <td className="py-3 px-4 text-right">
+                  <Link href="/projects">
+                    <Button variant="ghost" size="sm">
+                      Inspect
+                    </Button>
+                  </Link>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Design System Token Verification Card */}
+      <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Terminal className="w-4 h-4 text-textMuted-light dark:text-textMuted-dark" />
+            <h3 className="text-sm font-semibold">UI Design System Tokens & Component States</h3>
+          </div>
+          <span className="text-[11px] font-mono text-textMuted-light dark:text-textMuted-dark">
+            docs/UX_UI_DESIGN_SYSTEM.md
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          {/* Status Badges */}
+          <div className="p-3 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+              Status Badges
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <StatusBadge variant="success" label="Passed" />
+              <StatusBadge variant="warning" label="Pending" />
+              <StatusBadge variant="danger" label="Failed" />
+              <StatusBadge variant="info" label="Queued" />
+              <StatusBadge variant="simulated" label="Simulated" />
             </div>
           </div>
 
-          <div className="border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark p-4 rounded-md space-y-3">
-            <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark">
-              <Users className="w-4 h-4 text-accent" />
-              <span>Workforce & Recruitment</span>
-            </div>
-            <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-              Department structures, role catalog, agent identities, profile versioning, and qualification sandboxes.
-            </p>
-            <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs">
-              <span className="text-textMuted-light dark:text-textMuted-dark">Target Phase:</span>
-              <span className="font-mono">Phase 2 & 4</span>
+          {/* Button Variants */}
+          <div className="p-3 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+              Button Controls
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="primary">Primary</Button>
+              <Button size="sm" variant="secondary">Secondary</Button>
+              <Button size="sm" variant="outline">Outline</Button>
+              <Button size="sm" variant="danger">Danger</Button>
             </div>
           </div>
 
-          <div className="border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark p-4 rounded-md space-y-3">
-            <div className="flex items-center space-x-2 text-xs font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark">
-              <Cpu className="w-4 h-4 text-accent" />
-              <span>Execution & Governance</span>
-            </div>
-            <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-              MockEngineAdapter first, immutable audit trail, human approvals, and quality gates.
-            </p>
-            <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs">
-              <span className="text-textMuted-light dark:text-textMuted-dark">Target Phase:</span>
-              <span className="font-mono">Phase 5</span>
+          {/* Priorities */}
+          <div className="p-3 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+              Priority Levels
+            </span>
+            <div className="flex flex-col space-y-1">
+              <PriorityIndicator level="critical" />
+              <PriorityIndicator level="high" />
+              <PriorityIndicator level="medium" />
+              <PriorityIndicator level="low" />
             </div>
           </div>
         </div>
-
-        {/* Live Diagnostics & System Verification */}
-        <div className="border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark rounded-md p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Terminal className="w-4 h-4 text-textMuted-light dark:text-textMuted-dark" />
-              <h2 className="text-sm font-semibold">Backend Diagnostic Payload</h2>
-            </div>
-            <span className="text-[11px] font-mono text-textMuted-light dark:text-textMuted-dark">GET /api/v1/health</span>
-          </div>
-
-          <div className="bg-canvas-light dark:bg-canvas-dark p-3 rounded font-mono text-xs border border-borderBase-light dark:border-borderBase-dark overflow-x-auto">
-            {loading ? (
-              <span className="text-textMuted-light dark:text-textMuted-dark">Loading live diagnostic data...</span>
-            ) : error ? (
-              <span className="text-status-danger">Connection error: {error}</span>
-            ) : (
-              <pre className="text-textPrimary-light dark:text-textPrimary-dark">
-                {JSON.stringify(health, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* Persistent Footer */}
-      <footer className="h-8 border-t border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark px-4 flex items-center justify-between text-[11px] text-textMuted-light dark:text-textMuted-dark">
-        <div className="flex items-center space-x-2">
-          <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
-          <span>Human-Supervised Autonomy Active</span>
-        </div>
-        <div className="font-mono">
-          Strict Isolation Boundary Enforced
-        </div>
-      </footer>
-    </div>
+      </div>
+    </AppShell>
   );
 }

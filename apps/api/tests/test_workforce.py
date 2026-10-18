@@ -5,11 +5,11 @@ def test_workforce_agents(client):
     agents = res.json()
     assert len(agents) >= 4
     agent_names = [a["name"] for a in agents]
-    assert "Atlas" in agent_names
-    assert "Kairo" in agent_names
+    assert "Aditya Pratama" in agent_names
+    assert "Bayu Setiawan" in agent_names
 
-    # 2. Inspect Atlas
-    atlas = next(a for a in agents if a["name"] == "Atlas")
+    # 2. Inspect Aditya Pratama
+    atlas = next(a for a in agents if a["name"] == "Aditya Pratama")
     assert atlas["lifecycle_state"] == "active"
     assert atlas["qualification_state"] == "passed"
     assert atlas["engine_adapter"] == "mock"
@@ -22,7 +22,7 @@ def test_workforce_agents(client):
     role_id = roles_res.json()[0]["id"]
 
     new_agent = {
-        "name": "Nexus",
+        "name": "Dimas Saputra",
         "title": "Junior Backend Agent",
         "department_id": dept_id,
         "role_id": role_id,
@@ -37,7 +37,7 @@ def test_workforce_agents(client):
     create_res = client.post("/api/v1/workforce/agents", json=new_agent)
     assert create_res.status_code == 201
     created = create_res.json()
-    assert created["name"] == "Nexus"
+    assert created["name"] == "Dimas Saputra"
     assert created["current_profile_version"] == 1
     assert len(created["skills"]) == 2
 

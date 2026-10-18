@@ -92,7 +92,7 @@ def test_get_qualification_scorecard_endpoint():
     assert res.status_code == 200
     data = res.json()
     assert data["request_id"] == "req-rec-001"
-    assert data["candidate_name"] == "Vanguard"
+    assert data["candidate_name"] == "Fajar Hidayat"
     assert data["is_passed"] is True
     assert len(data["stages"]) == 4
 
@@ -100,7 +100,7 @@ def test_get_scorecard_unqualified_candidate():
     """Verify 404 when candidate has not yet executed qualification."""
     req_payload = {
         "role_id": "role-fe-eng",
-        "proposed_agent_name": "Novice",
+        "proposed_agent_name": "Rizky Ramadhan",
         "rationale": "Untested UI candidate.",
         "required_skills": ["CSS"]
     }

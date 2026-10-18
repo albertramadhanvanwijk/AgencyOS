@@ -7,7 +7,7 @@ client = TestClient(app)
 
 def test_approve_activation_success():
     """Verify supervisor approval activates a qualified candidate and creates AIAgent entity."""
-    unique_name = f"CipherX_{uuid.uuid4().hex[:6]}"
+    unique_name = f"Budi Santoso_{uuid.uuid4().hex[:6]}"
     # 1. Create candidate recruitment request
     payload = {
         "role_id": "role-be-arch",
@@ -78,7 +78,7 @@ def test_approve_activation_governance_rejection_unqualified():
     """Verify state machine rejects activation if sandbox qualification has not passed."""
     payload = {
         "role_id": "role-fe-eng",
-        "proposed_agent_name": f"UntestedAgent_{uuid.uuid4().hex[:6]}",
+        "proposed_agent_name": f"Gilang Pratama_{uuid.uuid4().hex[:6]}",
         "rationale": "Attempting unauthorized activation without qualification.",
         "required_skills": ["CSS"]
     }
@@ -96,7 +96,7 @@ def test_approve_activation_governance_rejection_unqualified():
 
 def test_approve_activation_double_activation_rejection():
     """Verify an already activated agent identity cannot be re-activated."""
-    unique_name = f"Strategist_{uuid.uuid4().hex[:6]}"
+    unique_name = f"Siti Rahmawati_{uuid.uuid4().hex[:6]}"
     payload = {
         "role_id": "role-po",
         "proposed_agent_name": unique_name,

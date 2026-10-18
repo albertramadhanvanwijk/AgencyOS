@@ -243,7 +243,7 @@ export default function OverviewPage() {
                         />
                       </td>
                       <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                        {isPlanning ? "1 Agent assigned (Sentinel)" : "2 Agents active"}
+                        {isPlanning ? "1 Agent assigned (Rian Nugraha)" : "2 Agents active"}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <Link href={`/projects/${proj.id}/board`}>

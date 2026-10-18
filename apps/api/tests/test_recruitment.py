@@ -34,7 +34,7 @@ def test_list_recruitment_requests():
     # Verify seed request
     seed_req = next((r for r in requests if r["id"] == "req-rec-001"), None)
     assert seed_req is not None
-    assert seed_req["proposed_agent_name"] == "Vanguard"
+    assert seed_req["proposed_agent_name"] == "Fajar Hidayat"
     assert seed_req["status"] in ["pending_approval", "qualified"]
     assert "Security & Threat Modeling" in seed_req["required_skills"]
 
@@ -47,7 +47,7 @@ def test_create_recruitment_request_success():
     """Verify submitting a valid recruitment request logs audit provenance."""
     payload = {
         "role_id": "role-be-arch",
-        "proposed_agent_name": "Cipher",
+        "proposed_agent_name": "Ahmad Fauzi",
         "rationale": "High load on backend APIs and SQLite WAL concurrency requires dedicated database performance tuning.",
         "requested_by": "Engineering Director",
         "required_skills": ["Python / FastAPI", "SQLAlchemy", "Database Reliability"]
@@ -55,7 +55,7 @@ def test_create_recruitment_request_success():
     res = client.post("/api/v1/recruitment/requests", json=payload)
     assert res.status_code == 201
     data = res.json()
-    assert data["proposed_agent_name"] == "Cipher"
+    assert data["proposed_agent_name"] == "Ahmad Fauzi"
     assert data["status"] == "pending_approval"
     assert data["role_name"] == "Backend Architect & Lead"
     assert data["policy_basis"] == "POL-AGENT-RECRUITMENT-V1"
@@ -70,7 +70,7 @@ def test_create_recruitment_request_success():
     event = audit_events[0]
     assert event["action"] == "RECRUITMENT_REQUEST_CREATED"
     assert event["actor"] == "Engineering Director"
-    assert event["details"]["proposed_agent_name"] == "Cipher"
+    assert event["details"]["proposed_agent_name"] == "Ahmad Fauzi"
 
 def test_create_recruitment_request_invalid_role():
     """Verify rejection when role does not exist in catalog."""

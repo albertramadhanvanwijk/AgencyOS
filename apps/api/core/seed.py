@@ -102,7 +102,7 @@ def seed_database(db: Session):
         # 3. Foundational Agents
         agent_atlas = AIAgent(
             id="agent-atlas",
-            name="Atlas",
+            name="Aditya Pratama",
             title="Lead Backend Architect",
             role_id=role_be.id,
             department_id=eng_dept.id,
@@ -118,7 +118,7 @@ def seed_database(db: Session):
 
         agent_kairo = AIAgent(
             id="agent-kairo",
-            name="Kairo",
+            name="Bayu Setiawan",
             title="Senior Frontend Engineer",
             role_id=role_fe.id,
             department_id=eng_dept.id,
@@ -134,7 +134,7 @@ def seed_database(db: Session):
 
         agent_scribe = AIAgent(
             id="agent-scribe",
-            name="Scribe",
+            name="Dewi Lestari",
             title="Technical Product Owner",
             role_id=role_po.id,
             department_id=prod_dept.id,
@@ -150,7 +150,7 @@ def seed_database(db: Session):
 
         agent_sentinel = AIAgent(
             id="agent-sentinel",
-            name="Sentinel",
+            name="Rian Nugraha",
             title="QA Gatekeeper",
             role_id=role_qa.id,
             department_id=qa_dept.id,
@@ -565,9 +565,9 @@ new file mode 100644
             id="req-rec-001",
             role_id="role-qa",
             department_id="dept-qa",
-            proposed_agent_name="Vanguard",
+            proposed_agent_name="Fajar Hidayat",
             rationale="Sustained demand for automated security sandbox qualification and threat penetration testing on PRJ-CORE and PRJ-EVAL.",
-            requested_by="Technical Lead / Scribe",
+            requested_by="Technical Lead / Dewi Lestari",
             required_skills=["Security & Threat Modeling", "Sandbox Containment", "Automated QA"],
             status="pending_approval",
             policy_basis="POL-AGENT-RECRUITMENT-V1"

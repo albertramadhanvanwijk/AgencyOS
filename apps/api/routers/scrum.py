@@ -119,9 +119,15 @@ def update_work_item(
 
     # Audit event on status change
     if update_in.status is not None and update_in.status != previous_status:
+        action_name = "WORK_ITEM_STATUS_TRANSITION"
+        if previous_status == "in_review" and item.status == "in_progress":
+            action_name = "WORK_ITEM_REWORK_REQUESTED"
+        elif previous_status == "done":
+            action_name = "WORK_ITEM_REOPENED"
+
         db.add(AuditEvent(
             actor="Agency Operator",
-            action="WORK_ITEM_STATUS_TRANSITION",
+            action=action_name,
             target_type="WORK_ITEM",
             target_id=item.id,
             project_id=item.project_id,
@@ -130,6 +136,12 @@ def update_work_item(
                 "key": item.key,
                 "from_status": previous_status,
                 "to_status": item.status,
+                "is_backward_step": (
+                    (previous_status == "in_review" and item.status == "in_progress") or
+                    (previous_status == "in_progress" and item.status == "ready") or
+                    (previous_status == "ready" and item.status == "backlog") or
+                    (previous_status == "done" and item.status == "in_review")
+                )
             }
         ))
 

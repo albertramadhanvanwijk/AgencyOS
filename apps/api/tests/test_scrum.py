@@ -81,3 +81,23 @@ def test_project_and_scrum_state_machine(client):
     # 10. Guard 4: Transition to Blocked without reason -> must fail
     block_fail_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "blocked", "blocker_reason": ""})
     assert block_fail_res.status_code == 400
+
+    # 11. Backward step 1: Done -> In Review (Reopen)
+    reopen_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "in_review"})
+    assert reopen_res.status_code == 200
+    assert reopen_res.json()["status"] == "in_review"
+
+    # 12. Backward step 2: In Review -> In Progress (Rework requested)
+    rework_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "in_progress"})
+    assert rework_res.status_code == 200
+    assert rework_res.json()["status"] == "in_progress"
+
+    # 13. Backward step 3: In Progress -> Ready
+    to_ready_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "ready"})
+    assert to_ready_res.status_code == 200
+    assert to_ready_res.json()["status"] == "ready"
+
+    # 14. Backward step 4: Ready -> Backlog
+    to_backlog_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "backlog"})
+    assert to_backlog_res.status_code == 200
+    assert to_backlog_res.json()["status"] == "backlog"

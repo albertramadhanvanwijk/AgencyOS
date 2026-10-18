@@ -23,6 +23,7 @@ import {
   Check,
   RotateCcw,
   GitBranch,
+  GripVertical,
 } from "lucide-react";
 
 interface WorkItem {
@@ -76,6 +77,10 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transitionError, setTransitionError] = useState<string | null>(null);
+
+  // Drag and Drop state
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null);
 
   // Create Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -154,6 +159,45 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         setTransitionError("State transition rejected by server.");
       }
     }
+  };
+
+  const handleDragStart = (e: React.DragEvent, itemId: string) => {
+    setDraggedItemId(itemId);
+    e.dataTransfer.setData("text/plain", itemId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItemId(null);
+    setDragOverColId(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverColId !== colId) {
+      setDragOverColId(colId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent, colId: string) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    if (dragOverColId === colId) {
+      setDragOverColId(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault();
+    const itemId = e.dataTransfer.getData("text/plain") || draggedItemId;
+    setDraggedItemId(null);
+    setDragOverColId(null);
+
+    if (!itemId) return;
+    const item = items.find((i) => i.id === itemId);
+    if (!item || item.status === targetStatus) return;
+
+    await handleTransition(itemId, targetStatus);
   };
 
   const handleCreateItem = async (e: React.FormEvent) => {
@@ -266,11 +310,19 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5 min-h-[550px] items-start">
           {COLUMNS.map((col) => {
             const colItems = items.filter((item) => item.status === col.id);
+            const isOver = dragOverColId === col.id;
 
             return (
               <div
                 key={col.id}
-                className="flex flex-col bg-surfaceSecondary-light/60 dark:bg-surfaceSecondary-dark/60 rounded-md border border-borderBase-light dark:border-borderBase-dark overflow-hidden min-h-[480px]"
+                onDragOver={(e) => handleDragOver(e, col.id)}
+                onDragLeave={(e) => handleDragLeave(e, col.id)}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className={`flex flex-col bg-surfaceSecondary-light/60 dark:bg-surfaceSecondary-dark/60 rounded-md border min-h-[480px] overflow-hidden transition-all duration-150 ${
+                  isOver
+                    ? "border-accent ring-2 ring-accent/30 bg-accent/5 dark:bg-accent/10"
+                    : "border-borderBase-light dark:border-borderBase-dark"
+                }`}
               >
                 {/* Column Header */}
                 <div className="p-2.5 border-b border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark flex items-center justify-between">
@@ -287,18 +339,34 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                 {/* Cards Container */}
                 <div className="p-2 space-y-2 flex-1 overflow-y-auto">
                   {colItems.length === 0 ? (
-                    <div className="h-28 border border-dashed border-borderBase-light dark:border-borderBase-dark rounded flex items-center justify-center text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                      No items
+                    <div
+                      className={`h-28 border border-dashed rounded flex items-center justify-center text-[11px] transition-colors ${
+                        isOver
+                          ? "border-accent text-accent bg-accent/5"
+                          : "border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
+                      }`}
+                    >
+                      {isOver ? "Drop to move here" : "No items"}
                     </div>
                   ) : (
                     colItems.map((item) => (
                       <div
                         key={item.id}
-                        className="p-3 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark space-y-2 shadow-xs hover:border-accent/40 transition-colors"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`p-3 rounded bg-surface-light dark:bg-surface-dark border space-y-2 shadow-xs transition-all cursor-grab active:cursor-grabbing hover:border-accent/40 ${
+                          draggedItemId === item.id
+                            ? "opacity-40 scale-[0.98] border-dashed border-accent"
+                            : "border-borderBase-light dark:border-borderBase-dark"
+                        }`}
                       >
-                        {/* Card Header */}
+                        {/* Card Header with Drag Handle */}
                         <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-mono font-semibold text-accent">{item.key}</span>
+                          <div className="flex items-center space-x-1.5">
+                            <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 cursor-grab" />
+                            <span className="font-mono font-semibold text-accent">{item.key}</span>
+                          </div>
                           <span className="uppercase text-[9px] font-semibold px-1 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark">
                             {item.type}
                           </span>
@@ -330,44 +398,119 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                           </div>
                         </div>
 
-                        {/* Transition Buttons */}
-                        <div className="pt-2 flex items-center justify-end space-x-1 border-t border-borderBase-light dark:border-borderBase-dark">
-                          {col.id === "backlog" && (
-                            <button
-                              onClick={() => handleTransition(item.id, "ready")}
-                              title="Move to Ready (Requires criteria)"
-                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-                            >
-                              Ready →
-                            </button>
-                          )}
-                          {col.id === "ready" && (
-                            <button
-                              onClick={() => handleTransition(item.id, "in_progress")}
-                              title="Start execution in workspace"
-                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
-                            >
-                              Start →
-                            </button>
-                          )}
-                          {col.id === "in_progress" && (
-                            <button
-                              onClick={() => handleTransition(item.id, "in_review")}
-                              title="Submit for review"
-                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-status-info/10 text-status-info hover:bg-status-info/20 transition-colors"
-                            >
-                              Review →
-                            </button>
-                          )}
-                          {col.id === "in_review" && (
-                            <button
-                              onClick={() => handleTransition(item.id, "done")}
-                              title="Approve & Complete"
-                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-status-success/10 text-status-success hover:bg-status-success/20 transition-colors"
-                            >
-                              Approve Done ✓
-                            </button>
-                          )}
+                        {/* Bidirectional Transition Buttons */}
+                        <div className="pt-2 flex items-center justify-between border-t border-borderBase-light dark:border-borderBase-dark">
+                          {/* Backward transition (Rework / Reopen / Return) */}
+                          <div>
+                            {col.id === "ready" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "backlog");
+                                }}
+                                title="Move back to Backlog"
+                                className="px-1.5 py-0.5 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
+                              >
+                                <ArrowLeft className="w-2.5 h-2.5" />
+                                <span>Backlog</span>
+                              </button>
+                            )}
+                            {col.id === "in_progress" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "ready");
+                                }}
+                                title="Move back to Ready"
+                                className="px-1.5 py-0.5 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
+                              >
+                                <ArrowLeft className="w-2.5 h-2.5" />
+                                <span>Ready</span>
+                              </button>
+                            )}
+                            {col.id === "in_review" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "in_progress");
+                                }}
+                                title="Return to In Progress for rework"
+                                className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-status-warning/10 text-status-warning hover:bg-status-warning/20 transition-colors flex items-center space-x-1"
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>Rework</span>
+                              </button>
+                            )}
+                            {col.id === "done" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "in_review");
+                                }}
+                                title="Reopen item for review"
+                                className="px-1.5 py-0.5 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>Reopen</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Forward transition */}
+                          <div className="flex items-center space-x-1">
+                            {col.id === "backlog" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "ready");
+                                }}
+                                title="Move to Ready (Requires criteria)"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center space-x-1"
+                              >
+                                <span>Ready</span>
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                            {col.id === "ready" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "in_progress");
+                                }}
+                                title="Start execution in workspace"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center space-x-1"
+                              >
+                                <span>Start</span>
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                            {col.id === "in_progress" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "in_review");
+                                }}
+                                title="Submit for review"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-status-info/10 text-status-info hover:bg-status-info/20 transition-colors flex items-center space-x-1"
+                              >
+                                <span>Review</span>
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                            {col.id === "in_review" && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTransition(item.id, "done");
+                                }}
+                                title="Approve & Complete"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-status-success/10 text-status-success hover:bg-status-success/20 transition-colors flex items-center space-x-1"
+                              >
+                                <Check className="w-2.5 h-2.5" />
+                                <span>Approve Done</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))
@@ -464,6 +607,49 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                 Close
               </Button>
               <div className="flex space-x-1.5">
+                {/* Reverse transitions */}
+                {selectedItem.status === "ready" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleTransition(selectedItem.id, "backlog")}
+                    leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                  >
+                    Return to Backlog
+                  </Button>
+                )}
+                {selectedItem.status === "in_progress" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleTransition(selectedItem.id, "ready")}
+                    leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                  >
+                    Return to Ready
+                  </Button>
+                )}
+                {selectedItem.status === "in_review" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleTransition(selectedItem.id, "in_progress")}
+                    leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                  >
+                    Request Rework
+                  </Button>
+                )}
+                {selectedItem.status === "done" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleTransition(selectedItem.id, "in_review")}
+                    leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                  >
+                    Reopen for Review
+                  </Button>
+                )}
+
+                {/* Forward transitions */}
                 {selectedItem.status === "backlog" && (
                   <Button size="sm" onClick={() => handleTransition(selectedItem.id, "ready")}>
                     Move to Ready →

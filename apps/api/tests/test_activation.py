@@ -1,11 +1,7 @@
 import uuid
 import pytest
-from fastapi.testclient import TestClient
-from apps.api.main import app
 
-client = TestClient(app)
-
-def test_approve_activation_success():
+def test_approve_activation_success(client):
     """Verify supervisor approval activates a qualified candidate and creates AIAgent entity."""
     unique_name = f"Budi Santoso_{uuid.uuid4().hex[:6]}"
     # 1. Create candidate recruitment request
@@ -74,7 +70,7 @@ def test_approve_activation_success():
     assert event["policy_basis"] == "POL-AGENT-ACTIVATION-V1"
     assert event["details"]["agent_name"] == unique_name
 
-def test_approve_activation_governance_rejection_unqualified():
+def test_approve_activation_governance_rejection_unqualified(client):
     """Verify state machine rejects activation if sandbox qualification has not passed."""
     payload = {
         "role_id": "role-fe-eng",
@@ -94,7 +90,7 @@ def test_approve_activation_governance_rejection_unqualified():
     assert approve_res.status_code == 400
     assert "Sandbox qualification benchmark must be passed first" in approve_res.json()["detail"]
 
-def test_approve_activation_double_activation_rejection():
+def test_approve_activation_double_activation_rejection(client):
     """Verify an already activated agent identity cannot be re-activated."""
     unique_name = f"Siti Rahmawati_{uuid.uuid4().hex[:6]}"
     payload = {

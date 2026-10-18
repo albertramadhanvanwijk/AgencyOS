@@ -1,10 +1,6 @@
 import pytest
-from fastapi.testclient import TestClient
-from apps.api.main import app
 
-client = TestClient(app)
-
-def test_get_demand_analysis():
+def test_get_demand_analysis(client):
     """Verify explainable demand analysis discovers bottlenecks and provides staffing recommendations."""
     res = client.get("/api/v1/recruitment/demand-analysis")
     assert res.status_code == 200
@@ -23,7 +19,7 @@ def test_get_demand_analysis():
     assert 0.0 <= rec["confidence_score"] <= 1.0
     assert len(rec["rationale"]) > 5
 
-def test_list_recruitment_requests():
+def test_list_recruitment_requests(client):
     """Verify listing recruitment requests with status filtering."""
     res = client.get("/api/v1/recruitment/requests")
     assert res.status_code == 200
@@ -43,7 +39,7 @@ def test_list_recruitment_requests():
     assert res_filtered.status_code == 200
     assert all(r["status"] == "pending_approval" for r in res_filtered.json())
 
-def test_create_recruitment_request_success():
+def test_create_recruitment_request_success(client):
     """Verify submitting a valid recruitment request logs audit provenance."""
     payload = {
         "role_id": "role-be-arch",
@@ -72,7 +68,7 @@ def test_create_recruitment_request_success():
     assert event["actor"] == "Engineering Director"
     assert event["details"]["proposed_agent_name"] == "Ahmad Fauzi"
 
-def test_create_recruitment_request_invalid_role():
+def test_create_recruitment_request_invalid_role(client):
     """Verify rejection when role does not exist in catalog."""
     payload = {
         "role_id": "non-existent-role-999",
@@ -84,12 +80,12 @@ def test_create_recruitment_request_invalid_role():
     assert res.status_code == 400
     assert "does not exist in organizational catalog" in res.json()["detail"]
 
-def test_update_recruitment_request_status():
+def test_update_recruitment_request_status(client):
     """Verify recruitment request status transitions and rejection reasoning."""
     # First create a request
     payload = {
         "role_id": "role-fe-eng",
-        "proposed_agent_name": "Pixel",
+        "proposed_agent_name": "Intan Permata Sari",
         "rationale": "Design system token expansion and micro-animations.",
         "required_skills": ["CSS / Tailwind", "Next.js"]
     }

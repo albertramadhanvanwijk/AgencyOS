@@ -1,15 +1,11 @@
 import pytest
-from fastapi.testclient import TestClient
-from apps.api.main import app
 
-client = TestClient(app)
-
-def test_sandbox_qualification_benchmark_success():
+def test_sandbox_qualification_benchmark_success(client):
     """Verify executing sandbox qualification in PRJ-EVAL produces an explainable scorecard and artifacts."""
     # 1. Create a candidate recruitment request
     req_payload = {
         "role_id": "role-qa",
-        "proposed_agent_name": "Aegis",
+        "proposed_agent_name": "Nadia Putri Utami",
         "rationale": "Specialized automated penetration testing and sandbox boundary enforcement.",
         "requested_by": "Security Lead",
         "required_skills": ["Security & Threat Modeling", "Automated QA", "Path Traversal Defense"]
@@ -26,7 +22,7 @@ def test_sandbox_qualification_benchmark_success():
     scorecard = qual_res.json()
 
     assert scorecard["request_id"] == request_id
-    assert scorecard["candidate_name"] == "Aegis"
+    assert scorecard["candidate_name"] == "Nadia Putri Utami"
     assert scorecard["overall_score"] >= 80.0
     assert scorecard["is_passed"] is True
     assert scorecard["passing_threshold"] == 80.0
@@ -81,7 +77,7 @@ def test_sandbox_qualification_benchmark_success():
     actions = [ev["action"] for ev in audit_res.json()]
     assert "RECRUITMENT_QUALIFICATION_COMPLETED" in actions
 
-def test_get_qualification_scorecard_endpoint():
+def test_get_qualification_scorecard_endpoint(client):
     """Verify retrieving existing candidate scorecard."""
     # Qualify candidate Vanguard (seeded)
     qual_res = client.post("/api/v1/recruitment/requests/req-rec-001/qualify")
@@ -96,7 +92,7 @@ def test_get_qualification_scorecard_endpoint():
     assert data["is_passed"] is True
     assert len(data["stages"]) == 4
 
-def test_get_scorecard_unqualified_candidate():
+def test_get_scorecard_unqualified_candidate(client):
     """Verify 404 when candidate has not yet executed qualification."""
     req_payload = {
         "role_id": "role-fe-eng",
@@ -112,7 +108,7 @@ def test_get_scorecard_unqualified_candidate():
     assert res.status_code == 404
     assert "Candidate has not executed sandbox qualification yet" in res.json()["detail"]
 
-def test_qualify_nonexistent_request():
+def test_qualify_nonexistent_request(client):
     """Verify 404 when request id is invalid."""
     res = client.post("/api/v1/recruitment/requests/non-existent-9999/qualify")
     assert res.status_code == 404

@@ -29,6 +29,7 @@ import {
   Terminal,
   FileCode,
   ShieldCheck,
+  Layers,
 } from "lucide-react";
 
 interface WorkItem {
@@ -486,6 +487,24 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
           </div>
         }
       />
+
+      {/* Planning Phase Informational Banner */}
+      {project?.status === "planning" && (
+        <div className="p-3.5 rounded-md bg-accent/5 border border-accent/25 flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-2.5 text-accent">
+            <Layers className="w-4 h-4 flex-shrink-0" />
+            <div>
+              <span className="font-semibold block">Planning Phase Active — Sprint 0 Backlog Refinement</span>
+              <span className="text-textMuted-light dark:text-textMuted-dark">
+                This project is currently in the planning phase. Stories start in the Backlog and must define testable acceptance criteria to qualify for Ready prior to sprint kickoff.
+              </span>
+            </div>
+          </div>
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-accent/15 text-accent border border-accent/30">
+            Sprint 0 Spec
+          </span>
+        </div>
+      )}
 
       {/* State Machine Guard Error Banner */}
       {transitionError && (

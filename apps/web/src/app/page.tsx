@@ -31,26 +31,55 @@ interface HealthStatus {
   };
 }
 
+interface Project {
+  id: string;
+  name: string;
+  key: string;
+  goal?: string;
+  status: string;
+  workspace_path: string;
+  item_counter: number;
+  active_sprint_name?: string;
+  total_items: number;
+  done_items: number;
+}
+
 export default function OverviewPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [agentsCount, setAgentsCount] = useState<number>(4);
+  const [activeAgentsCount, setActiveAgentsCount] = useState<number>(2);
   const [loading, setLoading] = useState(true);
 
-  const fetchHealth = async () => {
+  const fetchOverviewData = async () => {
     try {
       setLoading(true);
-      const res = await fetch("http://127.0.0.1:8000/api/v1/health");
-      const data = await res.json();
-      setHealth(data);
+      const [healthRes, projRes, agentsRes] = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/v1/health"),
+        fetch("http://127.0.0.1:8000/api/v1/projects"),
+        fetch("http://127.0.0.1:8000/api/v1/agents"),
+      ]);
+
+      if (healthRes.ok) setHealth(await healthRes.json());
+      if (projRes.ok) setProjects(await projRes.json());
+      if (agentsRes.ok) {
+        const agents = await agentsRes.json();
+        setAgentsCount(agents.length);
+        setActiveAgentsCount(agents.filter((a: any) => a.lifecycle_state === "active").length);
+      }
     } catch {
-      setHealth(null);
+      // Keep defaults
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchHealth();
+    fetchOverviewData();
   }, []);
+
+  const activeProjectsCount = projects.filter((p) => p.status === "active").length;
+  const planningProjectsCount = projects.filter((p) => p.status === "planning").length;
 
   return (
     <AppShell>
@@ -69,7 +98,7 @@ export default function OverviewPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchHealth}
+              onClick={fetchOverviewData}
               isLoading={loading}
               leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
             >
@@ -93,11 +122,11 @@ export default function OverviewPage() {
             <FolderKanban className="w-4 h-4 text-accent" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-semibold tabular-nums">2</span>
-            <span className="text-xs text-status-success font-medium">On Track</span>
+            <span className="text-2xl font-semibold tabular-nums">{projects.length || 2}</span>
+            <span className="text-xs text-status-success font-medium">Portfolio Ready</span>
           </div>
           <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-            1 in Sprint, 1 Backlog Ready
+            {activeProjectsCount} in Sprint, {planningProjectsCount} in Planning
           </p>
         </div>
 
@@ -108,10 +137,10 @@ export default function OverviewPage() {
             <Users className="w-4 h-4 text-accent" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-semibold tabular-nums">4</span>
+            <span className="text-2xl font-semibold tabular-nums">{agentsCount}</span>
             <span className="text-xs text-textMuted-light dark:text-textMuted-dark">Identities</span>
           </div>
-          <CapacityIndicator current={2} max={4} label="Agency Concurrency" />
+          <CapacityIndicator current={activeAgentsCount} max={agentsCount} label="Agency Concurrency" />
         </div>
 
         {/* Metric 3 */}
@@ -172,49 +201,61 @@ export default function OverviewPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
-              <tr className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors">
-                <td className="py-3 px-4 font-mono font-semibold text-accent">PRJ-CORE</td>
-                <td className="py-3 px-4 font-medium">AgencyOS Core Platform</td>
-                <td className="py-3 px-4">Sprint 1: Foundation (65%)</td>
-                <td className="py-3 px-4">
-                  <PriorityIndicator level="critical" />
-                </td>
-                <td className="py-3 px-4">
-                  <StatusBadge variant="success" label="On Track" />
-                </td>
-                <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                  2 Agents active
-                </td>
-                <td className="py-3 px-4 text-right">
-                  <Link href="/projects">
-                    <Button variant="ghost" size="sm">
-                      Inspect
-                    </Button>
-                  </Link>
-                </td>
-              </tr>
+              {projects.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-textMuted-light dark:text-textMuted-dark">
+                    No active projects found.
+                  </td>
+                </tr>
+              ) : (
+                projects.map((proj) => {
+                  const isPlanning = proj.status === "planning";
+                  const completionPercent =
+                    proj.total_items > 0
+                      ? Math.round((proj.done_items / proj.total_items) * 100)
+                      : 0;
 
-              <tr className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors">
-                <td className="py-3 px-4 font-mono font-semibold text-accent">PRJ-EVAL</td>
-                <td className="py-3 px-4 font-medium">Agent Qualification Benchmark</td>
-                <td className="py-3 px-4">Sprint 0: Sandbox Setup</td>
-                <td className="py-3 px-4">
-                  <PriorityIndicator level="medium" />
-                </td>
-                <td className="py-3 px-4">
-                  <StatusBadge variant="info" label="Planning" />
-                </td>
-                <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                  1 Agent assigned
-                </td>
-                <td className="py-3 px-4 text-right">
-                  <Link href="/projects">
-                    <Button variant="ghost" size="sm">
-                      Inspect
-                    </Button>
-                  </Link>
-                </td>
-              </tr>
+                  return (
+                    <tr
+                      key={proj.id}
+                      className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors"
+                    >
+                      <td className="py-3 px-4 font-mono font-semibold text-accent">{proj.key}</td>
+                      <td className="py-3 px-4 font-medium">{proj.name}</td>
+                      <td className="py-3 px-4">
+                        {isPlanning ? (
+                          <span className="text-textMuted-light dark:text-textMuted-dark">
+                            {proj.active_sprint_name || "Sprint 0"} (Backlog Refinement)
+                          </span>
+                        ) : (
+                          <span>
+                            {proj.active_sprint_name || "Sprint 1"} ({completionPercent}%)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <PriorityIndicator level={isPlanning ? "medium" : "critical"} />
+                      </td>
+                      <td className="py-3 px-4">
+                        <StatusBadge
+                          variant={isPlanning ? "info" : proj.status === "active" ? "success" : "neutral"}
+                          label={isPlanning ? "Planning" : proj.status === "active" ? "On Track" : proj.status}
+                        />
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                        {isPlanning ? "1 Agent assigned (Sentinel)" : "2 Agents active"}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Link href={`/projects/${proj.id}/board`}>
+                          <Button variant="ghost" size="sm" rightIcon={<ArrowRight className="w-3 h-3" />}>
+                            Inspect
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

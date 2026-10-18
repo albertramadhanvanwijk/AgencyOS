@@ -313,6 +313,95 @@ def seed_database(db: Session):
 
         db.commit()
 
+    # Seed PRJ-EVAL (Planning project) if not exists
+    if not db.query(Project).filter(Project.id == "prj-eval").first():
+        agent_sentinel = db.query(AIAgent).filter(AIAgent.id == "agent-sentinel").first()
+        agent_atlas = db.query(AIAgent).filter(AIAgent.id == "agent-atlas").first()
+        agent_scribe = db.query(AIAgent).filter(AIAgent.id == "agent-scribe").first()
+
+        proj_eval = Project(
+            id="prj-eval",
+            name="Agent Qualification Benchmark",
+            key="PRJ-EVAL",
+            goal="Standardized coding sandbox benchmark to qualify autonomous agent identities before live activation.",
+            status="planning",
+            workspace_path="workspaces/prj-eval",
+            item_counter=3
+        )
+        db.add(proj_eval)
+        db.flush()
+
+        sprint_eval_0 = Sprint(
+            id="sprint-eval-0",
+            project_id=proj_eval.id,
+            name="Sprint 0: Sandbox Setup & Qualification Spec",
+            goal="Draft evaluation harness test cases, sandbox containment spec, and qualification scoring rules.",
+            status="planning",
+            capacity_points=15
+        )
+        db.add(sprint_eval_0)
+        db.flush()
+
+        eval_item_1 = WorkItem(
+            id="item-eval-1",
+            project_id=proj_eval.id,
+            sprint_id=sprint_eval_0.id,
+            key="PRJ-EVAL-1",
+            type="story",
+            title="Define Standardized Coding Benchmark Test Suite",
+            description="Create reference test harness assessing Python and TypeScript implementation rigor without network access.",
+            status="backlog",
+            priority="high",
+            estimate_points=5.0,
+            acceptance_criteria=["Benchmark runner isolated from external network", "Passing threshold set at >= 85% coverage"],
+            definition_of_done=["Test harness runner operational", "Mock agent qualification verified"],
+            assignee_agent_id=agent_sentinel.id if agent_sentinel else None
+        )
+
+        eval_item_2 = WorkItem(
+            id="item-eval-2",
+            project_id=proj_eval.id,
+            sprint_id=sprint_eval_0.id,
+            key="PRJ-EVAL-2",
+            type="task",
+            title="Design Quarantine Sandbox Execution Environment",
+            description="Establish temporary branch-based ephemeral execution environments with zero host credential exposure.",
+            status="backlog",
+            priority="critical",
+            estimate_points=8.0,
+            acceptance_criteria=["Path traversal barred by CanonicalPathResolver", "Subprocess timeout enforced at 120s"],
+            definition_of_done=["Sandbox security penetration test passed"],
+            assignee_agent_id=agent_atlas.id if agent_atlas else None
+        )
+
+        eval_item_3 = WorkItem(
+            id="item-eval-3",
+            project_id=proj_eval.id,
+            sprint_id=sprint_eval_0.id,
+            key="PRJ-EVAL-3",
+            type="story",
+            title="Human Evaluator Dual-Key Sign-Off Protocol",
+            description="Ensure autonomous agent activation requires explicit human technical lead sign-off and audit log entry.",
+            status="ready",
+            priority="medium",
+            estimate_points=3.0,
+            acceptance_criteria=["Dual-key cryptographic or role-based check required", "Audit trail records policy basis"],
+            definition_of_done=["Verification gate tested and documented"],
+            assignee_agent_id=agent_scribe.id if agent_scribe else None
+        )
+
+        db.add_all([eval_item_1, eval_item_2, eval_item_3])
+        db.add(AuditEvent(
+            actor="System Initializer",
+            action="CREATE_PROJECT",
+            target_type="PROJECT",
+            target_id=proj_eval.id,
+            project_id=proj_eval.id,
+            policy_basis="SYSTEM_BOOTSTRAP_V1",
+            details={"name": proj_eval.name, "key": proj_eval.key, "status": "planning"}
+        ))
+        db.commit()
+
     # Seed execution run for completed item_1 if not exists
     if not db.query(ExecutionRun).filter(ExecutionRun.id == "run-core-101").first():
         run_1 = ExecutionRun(

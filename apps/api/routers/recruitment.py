@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -5,14 +6,18 @@ from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models.organization import JobRole, Department
 from apps.api.models.recruitment import RecruitmentRequest
+from apps.api.models.execution import ExecutionRun, RunArtifact
 from apps.api.models.audit import AuditEvent
 from apps.api.schemas.recruitment import (
     RecruitmentRequestCreate,
     RecruitmentRequestStatusUpdate,
     RecruitmentRequestOut,
-    DemandAnalysisOut
+    DemandAnalysisOut,
+    QualificationScorecardOut,
+    QualificationStageResult
 )
 from apps.api.services.demand_analyzer import analyze_workforce_demand
+from apps.api.services.qualification_runner import run_sandbox_qualification
 
 router = APIRouter(prefix="/recruitment", tags=["Recruitment"])
 
@@ -228,4 +233,68 @@ def update_recruitment_request_status(
         updated_at=req.updated_at,
         role_name=req.role.name if req.role else None,
         department_name=req.department.name if req.department else None,
+    )
+
+@router.post("/requests/{request_id}/qualify", response_model=QualificationScorecardOut)
+def trigger_qualification_benchmark(
+    request_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Triggers an isolated sandbox qualification benchmark in workspaces/prj-eval.
+    Calculates multi-stage benchmark score and updates candidate qualification status.
+    """
+    return run_sandbox_qualification(request_id, db)
+
+@router.get("/requests/{request_id}/scorecard", response_model=QualificationScorecardOut)
+def get_qualification_scorecard(
+    request_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves the latest qualification scorecard and stage breakdown for a candidate.
+    """
+    req = db.query(RecruitmentRequest).filter(RecruitmentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Recruitment request not found.")
+    
+    if not req.qualification_run_id:
+        raise HTTPException(status_code=404, detail="Candidate has not executed sandbox qualification yet.")
+
+    # Fetch scorecard artifact from execution run
+    artifact = db.query(RunArtifact).filter(
+        RunArtifact.run_id == req.qualification_run_id,
+        RunArtifact.name == "scorecard.json"
+    ).first()
+
+    if not artifact or not artifact.content_preview:
+        raise HTTPException(status_code=404, detail="Qualification scorecard artifact not found.")
+
+    scorecard_data = json.loads(artifact.content_preview)
+    run = db.query(ExecutionRun).filter(ExecutionRun.id == req.qualification_run_id).first()
+
+    stages = [
+        QualificationStageResult(
+            stage_name=s["stage_name"],
+            status=s["status"],
+            score=s["score"],
+            weight=s["weight"],
+            details=s["details"]
+        ) for s in scorecard_data.get("stages", [])
+    ]
+
+    return QualificationScorecardOut(
+        request_id=req.id,
+        candidate_name=req.proposed_agent_name,
+        role_name=req.role.name if req.role else "Specialist",
+        department_name=req.department.name if req.department else "Engineering",
+        qualification_run_id=req.qualification_run_id,
+        workspace_path=run.workspace_path if run else f"workspaces/prj-eval/runs/{req.qualification_run_id}",
+        overall_score=scorecard_data.get("overall_score", 0.0),
+        is_passed=scorecard_data.get("is_passed", False),
+        passing_threshold=scorecard_data.get("passing_threshold", 80.0),
+        evaluated_at=run.completed_at if run and run.completed_at else req.updated_at,
+        stages=stages,
+        recommendation="Candidate identity satisfies quality gate standards. Eligible for supervisor activation." if scorecard_data.get("is_passed") else "Candidate failed qualification.",
+        policy_basis=scorecard_data.get("policy_basis", "POL-AGENT-QUALIFICATION-V1")
     )

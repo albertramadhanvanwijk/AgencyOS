@@ -58,3 +58,25 @@ class DemandAnalysisOut(BaseModel):
     active_workforce_agents: int
     bottlenecks: List[SkillBottleneck]
     recommendations: List[RecruitmentRecommendation]
+
+class QualificationStageResult(BaseModel):
+    stage_name: str
+    status: str
+    score: float
+    weight: float
+    details: dict
+
+class QualificationScorecardOut(BaseModel):
+    request_id: str
+    candidate_name: str
+    role_name: str
+    department_name: str
+    qualification_run_id: str
+    workspace_path: str
+    overall_score: float
+    is_passed: bool
+    passing_threshold: float = 80.0
+    evaluated_at: datetime
+    stages: List[QualificationStageResult]
+    recommendation: str
+    policy_basis: str

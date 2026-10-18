@@ -317,7 +317,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
       if (runs.length === 0) {
         const item = items.find((i) => i.id === workItemId);
         setActiveRun({
-          id: `manual-${workItemId.slice(0, 8)}`,
+          id: `manual-${workItemId}`,
           project_id: projectId,
           work_item_id: workItemId,
           status: "succeeded",
@@ -330,7 +330,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         setRunLogs([
           {
             id: 1,
-            run_id: `manual-${workItemId.slice(0, 8)}`,
+            run_id: `manual-${workItemId}`,
             timestamp: new Date().toISOString(),
             stage: "review",
             level: "INFO",
@@ -339,7 +339,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
           },
           {
             id: 2,
-            run_id: `manual-${workItemId.slice(0, 8)}`,
+            run_id: `manual-${workItemId}`,
             timestamp: new Date().toISOString(),
             stage: "succeeded",
             level: "INFO",
@@ -350,7 +350,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         setRunArtifacts([
           {
             id: "art-summary",
-            run_id: `manual-${workItemId.slice(0, 8)}`,
+            run_id: `manual-${workItemId}`,
             name: "delivery_summary.md",
             artifact_type: "summary",
             file_path: `workspaces/${projectId}/delivery_summary.md`,

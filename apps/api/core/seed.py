@@ -314,7 +314,7 @@ def seed_database(db: Session):
         db.commit()
 
     # Seed execution run for completed item_1 if not exists
-    if not db.query(ExecutionRun).first():
+    if not db.query(ExecutionRun).filter(ExecutionRun.id == "run-core-101").first():
         run_1 = ExecutionRun(
             id="run-core-101",
             project_id="prj-core",
@@ -339,7 +339,7 @@ def seed_database(db: Session):
         db.add_all([log1, log2, log3, log4, log5])
 
         # Artifacts
-        diff_text = """# [SIMULATED] Git Patch Diff for PRJ-CORE-1
+        diff_text_1 = """# [SIMULATED] Git Patch Diff for PRJ-CORE-1
 # Work Item: Setup Monorepo Skeleton & API Health Engine
 diff --git a/apps/api/routers/health.py b/apps/api/routers/health.py
 new file mode 100644
@@ -352,17 +352,17 @@ new file mode 100644
 +def health():
 +    return {"status": "healthy", "service": "AgencyOS API"}
 +"""
-        art_diff = RunArtifact(
+        art_diff_1 = RunArtifact(
             run_id=run_1.id,
             name="patch.diff",
             artifact_type="diff",
             file_path="workspaces/prj-core/runs/run-core-101/patch.diff",
-            size_bytes=len(diff_text.encode("utf-8")),
-            content_preview=diff_text,
+            size_bytes=len(diff_text_1.encode("utf-8")),
+            content_preview=diff_text_1,
             is_simulated=True
         )
 
-        test_text = """{
+        test_text_1 = """{
   "simulated": true,
   "framework": "pytest-simulated",
   "total": 7,
@@ -370,16 +370,16 @@ new file mode 100644
   "failed": 0,
   "duration_seconds": 0.42
 }"""
-        art_test = RunArtifact(
+        art_test_1 = RunArtifact(
             run_id=run_1.id,
             name="test_results.json",
             artifact_type="test_results",
             file_path="workspaces/prj-core/runs/run-core-101/test_results.json",
-            size_bytes=len(test_text.encode("utf-8")),
-            content_preview=test_text,
+            size_bytes=len(test_text_1.encode("utf-8")),
+            content_preview=test_text_1,
             is_simulated=True
         )
-        db.add_all([art_diff, art_test])
+        db.add_all([art_diff_1, art_test_1])
 
         # Quality Checks
         qc1 = QualityCheckResult(run_id=run_1.id, check_name="LINT", status="passed", details={"errors": 0}, is_simulated=True)
@@ -387,6 +387,86 @@ new file mode 100644
         qc3 = QualityCheckResult(run_id=run_1.id, check_name="UNIT_TESTS", status="passed", details={"passed": 7, "total": 7}, is_simulated=True)
         qc4 = QualityCheckResult(run_id=run_1.id, check_name="SECURITY_SCAN", status="passed", details={"vulnerabilities": 0}, is_simulated=True)
         db.add_all([qc1, qc2, qc3, qc4])
+        db.commit()
+
+    # Seed execution run for PRJ-CORE-2 if not exists
+    if not db.query(ExecutionRun).filter(ExecutionRun.id == "run-core-102").first():
+        run_2 = ExecutionRun(
+            id="run-core-102",
+            project_id="prj-core",
+            work_item_id="item-core-2",
+            agent_id="agent-kairo",
+            status="succeeded",
+            workspace_path="workspaces/prj-core/runs/run-core-102",
+            is_simulated=True,
+            adapter_name="MockEngineAdapter",
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc)
+        )
+        db.add(run_2)
+        db.flush()
+
+        log2_1 = RunLog(run_id=run_2.id, stage="preparing", level="INFO", message="[SIMULATED] Preparing isolated UI workspace for PRJ-CORE-2", is_simulated=True)
+        log2_2 = RunLog(run_id=run_2.id, stage="running", level="INFO", message="[SIMULATED] Constructing Calm Engineering Design System tokens and AppShell", is_simulated=True)
+        log2_3 = RunLog(run_id=run_2.id, stage="collecting_results", level="INFO", message="[SIMULATED] Generating UI components diff and WCAG contrast audit", is_simulated=True)
+        log2_4 = RunLog(run_id=run_2.id, stage="quality_checks", level="INFO", message="[SIMULATED] Executing ESLint, Prettier, and Jest component suites", is_simulated=True)
+        log2_5 = RunLog(run_id=run_2.id, stage="review", level="INFO", message="[SIMULATED] Verification passed with 100% WCAG AA compliance. Signed off into Done.", is_simulated=True)
+        db.add_all([log2_1, log2_2, log2_3, log2_4, log2_5])
+
+        diff_text_2 = """# [SIMULATED] Git Patch Diff for PRJ-CORE-2
+# Work Item: Implement Calm Engineering UI Shell & Design System
+diff --git a/apps/web/src/components/layout/AppShell.tsx b/apps/web/src/components/layout/AppShell.tsx
+new file mode 100644
+--- /dev/null
++++ b/apps/web/src/components/layout/AppShell.tsx
+@@ -0,0 +1,24 @@
++import React from "react";
++import { Sidebar } from "./Sidebar";
++import { Topbar } from "./Topbar";
++
++export function AppShell({ children }: { children: React.ReactNode }) {
++  return (
++    <div className="flex h-screen bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark">
++      <Sidebar />
++      <main className="flex-1 overflow-y-auto">{children}</main>
++    </div>
++  );
++}
++"""
+        art_diff_2 = RunArtifact(
+            run_id=run_2.id,
+            name="patch.diff",
+            artifact_type="diff",
+            file_path="workspaces/prj-core/runs/run-core-102/patch.diff",
+            size_bytes=len(diff_text_2.encode("utf-8")),
+            content_preview=diff_text_2,
+            is_simulated=True
+        )
+
+        test_text_2 = """{
+  "simulated": true,
+  "framework": "jest-accessibility",
+  "total": 12,
+  "passed": 12,
+  "failed": 0,
+  "wcag_aa_compliant": true
+}"""
+        art_test_2 = RunArtifact(
+            run_id=run_2.id,
+            name="test_results.json",
+            artifact_type="test_results",
+            file_path="workspaces/prj-core/runs/run-core-102/test_results.json",
+            size_bytes=len(test_text_2.encode("utf-8")),
+            content_preview=test_text_2,
+            is_simulated=True
+        )
+        db.add_all([art_diff_2, art_test_2])
+
+        qc2_1 = QualityCheckResult(run_id=run_2.id, check_name="LINT", status="passed", details={"errors": 0}, is_simulated=True)
+        qc2_2 = QualityCheckResult(run_id=run_2.id, check_name="TYPECHECK", status="passed", details={"errors": 0}, is_simulated=True)
+        qc2_3 = QualityCheckResult(run_id=run_2.id, check_name="WCAG_CONTRAST", status="passed", details={"ratio": "4.8:1", "level": "AA"}, is_simulated=True)
+        qc2_4 = QualityCheckResult(run_id=run_2.id, check_name="UNIT_TESTS", status="passed", details={"passed": 12, "total": 12}, is_simulated=True)
+        db.add_all([qc2_1, qc2_2, qc2_3, qc2_4])
         db.commit()
 
 def init_db():

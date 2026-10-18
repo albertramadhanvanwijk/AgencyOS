@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-canvas: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: #F0F2F5;
+  --color-text-primary: #17191C;
+  --color-text-muted: #626B76;
+  --color-border: #E1E5EA;
+  --color-accent: #4657C8;
+  --color-accent-hover: #3948B0;
+  --color-status-success: #16794B;
+  --color-status-warning: #9A6700;
+  --color-status-danger: #C23934;
+  --color-status-info: #2563A6;
+}
+
+.dark {
+  --color-canvas: #111318;
+  --color-surface: #171A21;
+  --color-surface-secondary: #20242D;
+  --color-text-primary: #F1F3F5;
+  --color-text-muted: #A4ACB8;
+  --color-border: #2D333D;
+  --color-accent: #6371DF;
+  --color-accent-hover: #7986E5;
+  --color-status-success: #209961;
+  --color-status-warning: #C78B14;
+  --color-status-danger: #D94843;
+  --color-status-info: #3E7DC2;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numerals for dense operational tables and numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}

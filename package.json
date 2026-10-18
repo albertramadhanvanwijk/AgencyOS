@@ -1,0 +1,14 @@
+{
+  "name": "agencyos-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @agencyos/web dev",
+    "build:web": "pnpm --filter @agencyos/web build",
+    "lint:web": "pnpm --filter @agencyos/web lint",
+    "test:web": "pnpm --filter @agencyos/web test",
+    "dev:api": "powershell -Command \"cd apps/api; .venv/Scripts/python -m uvicorn main:app --reload --port 8000\"",
+    "test:api": "powershell -Command \"cd apps/api; .venv/Scripts/python -m pytest\""
+  }
+}

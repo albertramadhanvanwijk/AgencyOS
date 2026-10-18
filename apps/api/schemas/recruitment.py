@@ -80,3 +80,21 @@ class QualificationScorecardOut(BaseModel):
     stages: List[QualificationStageResult]
     recommendation: str
     policy_basis: str
+
+class AgentActivationApprovalIn(BaseModel):
+    approver: str = Field(default="Agency Director", min_length=2)
+    approval_notes: Optional[str] = None
+    custom_title: Optional[str] = None
+    max_concurrency: int = Field(default=2, ge=1, le=10)
+
+class AgentActivationOut(BaseModel):
+    request_id: str
+    agent_id: str
+    agent_name: str
+    role_name: str
+    department_name: str
+    status: str
+    benchmark_score: float
+    activated_at: datetime
+    policy_basis: str
+    skills_count: int

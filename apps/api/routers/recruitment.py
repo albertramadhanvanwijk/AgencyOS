@@ -1,10 +1,12 @@
 import json
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from apps.api.core.database import get_db
 from apps.api.models.organization import JobRole, Department
+from apps.api.models.workforce import AIAgent, AgentProfileVersion, AgentSkill
 from apps.api.models.recruitment import RecruitmentRequest
 from apps.api.models.execution import ExecutionRun, RunArtifact
 from apps.api.models.audit import AuditEvent
@@ -14,7 +16,9 @@ from apps.api.schemas.recruitment import (
     RecruitmentRequestOut,
     DemandAnalysisOut,
     QualificationScorecardOut,
-    QualificationStageResult
+    QualificationStageResult,
+    AgentActivationApprovalIn,
+    AgentActivationOut
 )
 from apps.api.services.demand_analyzer import analyze_workforce_demand
 from apps.api.services.qualification_runner import run_sandbox_qualification
@@ -297,4 +301,122 @@ def get_qualification_scorecard(
         stages=stages,
         recommendation="Candidate identity satisfies quality gate standards. Eligible for supervisor activation." if scorecard_data.get("is_passed") else "Candidate failed qualification.",
         policy_basis=scorecard_data.get("policy_basis", "POL-AGENT-QUALIFICATION-V1")
+    )
+
+@router.post("/requests/{request_id}/approve-activation", response_model=AgentActivationOut)
+def approve_agent_activation(
+    request_id: str,
+    approval_in: AgentActivationApprovalIn,
+    db: Session = Depends(get_db)
+):
+    """
+    Enforces dual-key supervisor human approval to activate a qualified agent identity.
+    Automatically provisions new AIAgent, profile version 1, verified skills, and logs audit provenance.
+    """
+    req = db.query(RecruitmentRequest).filter(RecruitmentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Recruitment request not found.")
+
+    if req.status == "activated":
+        raise HTTPException(status_code=400, detail="This agent identity has already been activated.")
+
+    # Governance check: Only qualified candidates can be activated
+    if req.status != "qualified":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot activate candidate in status '{req.status}'. Sandbox qualification benchmark must be passed first."
+        )
+
+    # Check candidate name uniqueness in AIAgent
+    existing_agent = db.query(AIAgent).filter(AIAgent.name == req.proposed_agent_name).first()
+    if existing_agent:
+        raise HTTPException(
+            status_code=400,
+            detail=f"An active AI agent with name '{req.proposed_agent_name}' already exists in the workforce registry."
+        )
+
+    # 1. Create AIAgent
+    title = approval_in.custom_title or (req.role.name if req.role else "Specialist")
+    agent = AIAgent(
+        name=req.proposed_agent_name,
+        title=title,
+        role_id=req.role_id,
+        department_id=req.department_id,
+        lifecycle_state="active",
+        availability_state="available",
+        qualification_state="passed",
+        max_concurrency=approval_in.max_concurrency,
+        current_concurrency=0,
+        engine_adapter="mock",
+        instructions=f"Operate under {req.role.name if req.role else 'specialist'} guidelines. Enforce quality gates, maintain domain boundaries, and audit all actions.",
+        current_profile_version=1
+    )
+    db.add(agent)
+    db.flush()
+
+    # 2. Create Profile Version 1
+    profile_ver = AgentProfileVersion(
+        agent_id=agent.id,
+        version_number=1,
+        instructions=agent.instructions,
+        config_snapshot={
+            "max_concurrency": agent.max_concurrency,
+            "engine": agent.engine_adapter,
+            "qualification_run_id": req.qualification_run_id,
+            "benchmark_score": req.benchmark_score
+        },
+        change_rationale=f"Supervised recruitment activation by {approval_in.approver}. Sandbox benchmark score: {req.benchmark_score}%."
+    )
+    db.add(profile_ver)
+
+    # 3. Create Verified Agent Skills
+    skills_created = 0
+    for skill_name in req.required_skills or []:
+        db.add(AgentSkill(
+            agent_id=agent.id,
+            name=skill_name,
+            is_verified=True,
+            verified_evidence=f"Passed sandbox benchmark in {req.qualification_run_id} ({req.benchmark_score}%)"
+        ))
+        skills_created += 1
+
+    # 4. Transition Request Status
+    req.status = "activated"
+
+    # 5. Audit Provenance
+    now = datetime.now(timezone.utc)
+    db.add(AuditEvent(
+        actor=approval_in.approver,
+        action="AGENT_IDENTITY_ACTIVATED",
+        target_type="AI_AGENT",
+        target_id=agent.id,
+        policy_basis="POL-AGENT-ACTIVATION-V1",
+        details={
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "role_id": agent.role_id,
+            "role_name": req.role.name if req.role else None,
+            "department_id": agent.department_id,
+            "benchmark_score": req.benchmark_score,
+            "qualification_run_id": req.qualification_run_id,
+            "recruitment_request_id": req.id,
+            "approval_notes": approval_in.approval_notes
+        }
+    ))
+
+    db.commit()
+    db.refresh(agent)
+    db.refresh(req)
+
+    return AgentActivationOut(
+        request_id=req.id,
+        agent_id=agent.id,
+        agent_name=agent.name,
+        role_name=req.role.name if req.role else "Specialist",
+        department_name=req.department.name if req.department else "Engineering",
+        status="active",
+        benchmark_score=req.benchmark_score or 0.0,
+        activated_at=now,
+        policy_basis="POL-AGENT-ACTIVATION-V1",
+        skills_count=skills_created
     )

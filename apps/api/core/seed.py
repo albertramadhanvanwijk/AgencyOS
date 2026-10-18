@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from apps.api.core.database import engine, Base, SessionLocal
 from apps.api.models import (
     Department, JobRole, AIAgent, AgentProfileVersion, AgentSkill,
-    AuditEvent, Project, Sprint, WorkItem
+    AuditEvent, Project, Sprint, WorkItem,
+    ExecutionRun, RunLog, RunArtifact, QualityCheckResult
 )
 
 def seed_database(db: Session):
@@ -309,6 +311,82 @@ def seed_database(db: Session):
             details={"departments_count": 4, "roles_count": 4, "agents_count": 4, "projects_count": 1, "work_items_count": 5}
         ))
 
+        db.commit()
+
+    # Seed execution run for completed item_1 if not exists
+    if not db.query(ExecutionRun).first():
+        run_1 = ExecutionRun(
+            id="run-core-101",
+            project_id="prj-core",
+            work_item_id="item-core-1",
+            agent_id="agent-atlas",
+            status="succeeded",
+            workspace_path="workspaces/prj-core/runs/run-core-101",
+            is_simulated=True,
+            adapter_name="MockEngineAdapter",
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc)
+        )
+        db.add(run_1)
+        db.flush()
+
+        # Logs
+        log1 = RunLog(run_id=run_1.id, stage="preparing", level="INFO", message="[SIMULATED] Initializing isolated run workspace for PRJ-CORE-1", is_simulated=True)
+        log2 = RunLog(run_id=run_1.id, stage="running", level="INFO", message="[SIMULATED] Implementing API health endpoints & SQLite WAL mode", is_simulated=True)
+        log3 = RunLog(run_id=run_1.id, stage="collecting_results", level="INFO", message="[SIMULATED] Generating git patch diff and verification artifacts", is_simulated=True)
+        log4 = RunLog(run_id=run_1.id, stage="quality_checks", level="INFO", message="[SIMULATED] Running quality gates (LINT, TYPECHECK, TESTS, SECURITY)", is_simulated=True)
+        log5 = RunLog(run_id=run_1.id, stage="review", level="INFO", message="[SIMULATED] Execution completed with zero defect escapes. Approved into Done.", is_simulated=True)
+        db.add_all([log1, log2, log3, log4, log5])
+
+        # Artifacts
+        diff_text = """# [SIMULATED] Git Patch Diff for PRJ-CORE-1
+# Work Item: Setup Monorepo Skeleton & API Health Engine
+diff --git a/apps/api/routers/health.py b/apps/api/routers/health.py
+new file mode 100644
+--- /dev/null
++++ b/apps/api/routers/health.py
+@@ -0,0 +1,18 @@
++from fastapi import APIRouter
++router = APIRouter()
++@router.get("/health")
++def health():
++    return {"status": "healthy", "service": "AgencyOS API"}
++"""
+        art_diff = RunArtifact(
+            run_id=run_1.id,
+            name="patch.diff",
+            artifact_type="diff",
+            file_path="workspaces/prj-core/runs/run-core-101/patch.diff",
+            size_bytes=len(diff_text.encode("utf-8")),
+            content_preview=diff_text,
+            is_simulated=True
+        )
+
+        test_text = """{
+  "simulated": true,
+  "framework": "pytest-simulated",
+  "total": 7,
+  "passed": 7,
+  "failed": 0,
+  "duration_seconds": 0.42
+}"""
+        art_test = RunArtifact(
+            run_id=run_1.id,
+            name="test_results.json",
+            artifact_type="test_results",
+            file_path="workspaces/prj-core/runs/run-core-101/test_results.json",
+            size_bytes=len(test_text.encode("utf-8")),
+            content_preview=test_text,
+            is_simulated=True
+        )
+        db.add_all([art_diff, art_test])
+
+        # Quality Checks
+        qc1 = QualityCheckResult(run_id=run_1.id, check_name="LINT", status="passed", details={"errors": 0}, is_simulated=True)
+        qc2 = QualityCheckResult(run_id=run_1.id, check_name="TYPECHECK", status="passed", details={"errors": 0}, is_simulated=True)
+        qc3 = QualityCheckResult(run_id=run_1.id, check_name="UNIT_TESTS", status="passed", details={"passed": 7, "total": 7}, is_simulated=True)
+        qc4 = QualityCheckResult(run_id=run_1.id, check_name="SECURITY_SCAN", status="passed", details={"vulnerabilities": 0}, is_simulated=True)
+        db.add_all([qc1, qc2, qc3, qc4])
         db.commit()
 
 def init_db():

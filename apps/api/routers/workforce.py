@@ -67,10 +67,6 @@ def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
     if not role:
         raise HTTPException(status_code=404, detail="JobRole not found")
 
-    existing = db.query(AIAgent).filter(AIAgent.name == agent_in.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"Agent '{agent_in.name}' already exists.")
-
     agent = AIAgent(
         name=agent_in.name,
         title=agent_in.title or role.name,

@@ -327,14 +327,6 @@ def approve_agent_activation(
             detail=f"Cannot activate candidate in status '{req.status}'. Sandbox qualification benchmark must be passed first."
         )
 
-    # Check candidate name uniqueness in AIAgent
-    existing_agent = db.query(AIAgent).filter(AIAgent.name == req.proposed_agent_name).first()
-    if existing_agent:
-        raise HTTPException(
-            status_code=400,
-            detail=f"An active AI agent with name '{req.proposed_agent_name}' already exists in the workforce registry."
-        )
-
     # 1. Create AIAgent
     title = approval_in.custom_title or (req.role.name if req.role else "Specialist")
     agent = AIAgent(

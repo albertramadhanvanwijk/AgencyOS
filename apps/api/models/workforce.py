@@ -11,7 +11,7 @@ class AIAgent(Base):
     __tablename__ = "ai_agents"
 
     id = Column(String(64), primary_key=True, default=generate_uuid)
-    name = Column(String(128), nullable=False, unique=True)
+    name = Column(String(128), nullable=False)
     title = Column(String(128), nullable=True)
     role_id = Column(String(64), ForeignKey("job_roles.id"), nullable=False)
     department_id = Column(String(64), ForeignKey("departments.id"), nullable=False)

@@ -20,7 +20,9 @@ import {
   Layers,
   Sparkles,
   Info,
+  Dices,
 } from "lucide-react";
+import { generateIndonesianName } from "../../utils/nameGenerator";
 
 interface AgentSkill {
   id: string;
@@ -234,7 +236,15 @@ export default function WorkforcePage() {
           { label: "Workforce" },
         ]}
         actions={
-          <Button size="sm" onClick={() => setIsModalOpen(true)} leftIcon={<Plus className="w-3.5 h-3.5" />}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setNewName(generateIndonesianName());
+              setModalError(null);
+              setIsModalOpen(true);
+            }}
+            leftIcon={<Plus className="w-3.5 h-3.5" />}
+          >
             Create Agent Identity
           </Button>
         }
@@ -486,15 +496,29 @@ export default function WorkforcePage() {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-medium block mb-1">Agent Name *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-medium">Agent Name *</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewName(generateIndonesianName())}
+                    className="inline-flex items-center space-x-1 text-[11px] text-accent hover:underline font-medium cursor-pointer"
+                    title="Generate nama Indonesia baru (2 - 3 kata)"
+                  >
+                    <Dices className="w-3 h-3" />
+                    <span>Acak Nama Indonesia</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Orion"
+                  placeholder="e.g. Budi Santoso, Rian Pratama Putra"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
                 />
+                <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1">
+                  Nama agen format Indonesia (maksimal 2 - 3 kata). Agen diizinkan memiliki nama yang sama dengan pembeda ID unik sistem.
+                </p>
               </div>
 
               <div>

@@ -28,7 +28,9 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
+  Dices,
 } from "lucide-react";
+import { generateIndonesianName } from "../../utils/nameGenerator";
 
 interface SkillBottleneck {
   skill: string;
@@ -203,6 +205,15 @@ export default function RecruitmentPage() {
     return matchesStatus && matchesSearch;
   });
 
+  const handleOpenCreateModal = (roleId?: string, rationale?: string, skills?: string) => {
+    setNewRoleId(roleId || "");
+    setNewName(generateIndonesianName());
+    setNewRationale(rationale || "");
+    setNewSkills(skills || "");
+    setCreateError(null);
+    setIsCreateModalOpen(true);
+  };
+
   // Action: Trigger Sandbox Qualification
   const handleRunQualification = async (requestId: string) => {
     try {
@@ -217,6 +228,9 @@ export default function RecruitmentPage() {
       }
       // Refresh list to update status and scores
       await fetchData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
       // Automatically open scorecard
       await handleOpenScorecard(requestId);
     } catch (err: any) {
@@ -291,6 +305,9 @@ export default function RecruitmentPage() {
       setIsActivationModalOpen(false);
       setIsScorecardOpen(false);
       await fetchData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
     } catch (err: any) {
       setActivationError(err.message || "Activation failed.");
     } finally {
@@ -337,6 +354,9 @@ export default function RecruitmentPage() {
       setNewRationale("");
       setNewSkills("");
       await fetchData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
     } catch (err: any) {
       setCreateError(err.message || "Submission failed.");
     } finally {
@@ -387,10 +407,7 @@ export default function RecruitmentPage() {
             </Button>
             <Button
               size="sm"
-              onClick={() => {
-                setIsCreateModalOpen(true);
-                setCreateError(null);
-              }}
+              onClick={() => handleOpenCreateModal()}
               leftIcon={<UserPlus className="w-3.5 h-3.5" />}
             >
               New Recruitment Request
@@ -531,10 +548,11 @@ export default function RecruitmentPage() {
                     variant="outline"
                     className="flex-shrink-0"
                     onClick={() => {
-                      setNewRoleId(rec.target_role_id || "");
-                      setNewSkills(rec.suggested_skills.join(", "));
-                      setNewRationale(rec.rationale);
-                      setIsCreateModalOpen(true);
+                      handleOpenCreateModal(
+                        rec.target_role_id,
+                        rec.rationale,
+                        rec.suggested_skills.join(", ")
+                      );
                     }}
                   >
                     Draft Request for {rec.target_role_name}
@@ -1080,17 +1098,31 @@ export default function RecruitmentPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
-                    Proposed Agent Identity Name *
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
+                      Proposed Agent Identity Name *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setNewName(generateIndonesianName())}
+                      className="inline-flex items-center space-x-1 text-[11px] text-accent hover:underline font-medium cursor-pointer"
+                      title="Generate nama Indonesia baru (2 - 3 kata)"
+                    >
+                      <Dices className="w-3.5 h-3.5" />
+                      <span>Acak Nama Indonesia</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     className="w-full px-3 py-1.5 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent text-xs"
-                    placeholder="e.g. Apex, Cipher, Sentinel, Aegis"
+                    placeholder="e.g. Budi Santoso, Rian Pratama Putra"
                   />
+                  <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                    Nama agen otomatis dibuat dalam format nama Indonesia (maksimal 2 - 3 kata). Anda bebas mengedit atau menggunakan nama yang sama jika diperlukan.
+                  </p>
                 </div>
 
                 <div className="space-y-1">

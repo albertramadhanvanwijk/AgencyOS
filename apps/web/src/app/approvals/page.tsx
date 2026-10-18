@@ -191,6 +191,9 @@ export default function ApprovalsPage() {
       );
       setIsActivationModalOpen(false);
       await fetchApprovals();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
     } catch (err: any) {
       setActionError(err.message || "Failed to activate agent.");
     } finally {
@@ -233,6 +236,9 @@ export default function ApprovalsPage() {
       setActionSuccess(`Candidate "${candidateToReject.proposed_agent_name}" has been rejected.`);
       setIsRejectModalOpen(false);
       await fetchApprovals();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
     } catch (err: any) {
       alert(`Error rejecting request: ${err.message}`);
     } finally {

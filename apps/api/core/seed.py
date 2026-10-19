@@ -10,196 +10,559 @@ from apps.api.models import (
 
 import os
 
+def seed_enterprise_agency(db: Session):
+    """
+    Seeds or updates the full enterprise digital agency organization:
+    - 3 Primary Directorates: Product & Design, Engineering & Architecture, Quality & Delivery Operations.
+    - 19 Specialized Job Roles across departments.
+    - 10 Foundational Specialist AI Agents with verified skills and tailored system instructions.
+    """
+    # 1. Primary Departments (Directorates & Core Units)
+    depts_data = [
+        {
+            "id": "dept-prod",
+            "name": "Product & Research",
+            "code": "PROD",
+            "description": "Strategi produk, analisis kebutuhan bisnis, sistem desain UI/UX, user research, dan spesifikasi PRD."
+        },
+        {
+            "id": "dept-eng",
+            "name": "Engineering",
+            "code": "ENG",
+            "description": "Arsitektur perangkat lunak modular (Clean Architecture), database engineering, REST API, frontend modern, dan keamanan siber."
+        },
+        {
+            "id": "dept-delivery",
+            "name": "Operations & Delivery",
+            "code": "OPS",
+            "description": "Tata kelola Scrum, pengujian mutu otomatis (Definition of Done QA Gate), integrasi CI/CD, dan rilis repositori."
+        },
+        {
+            "id": "dept-qa",
+            "name": "Quality Assurance",
+            "code": "QA",
+            "description": "Automated testing, security quality gates, performance and code review."
+        },
+        {
+            "id": "dept-des",
+            "name": "Design System",
+            "code": "DESIGN",
+            "description": "UI/UX design system tokens, accessible interaction, dan visual standards."
+        }
+    ]
+
+    for d_info in depts_data:
+        existing_d = db.query(Department).filter(
+            (Department.id == d_info["id"]) | (Department.code == d_info["code"])
+        ).first()
+        if existing_d:
+            existing_d.name = d_info["name"]
+            existing_d.code = d_info["code"]
+            existing_d.description = d_info["description"]
+        else:
+            db.add(Department(**d_info))
+    db.flush()
+
+    # 2. Specialized Job Roles
+    roles_data = [
+        # Core Standard Roles (Backward Compatible)
+        {
+            "id": "role-be-arch",
+            "department_id": "dept-eng",
+            "name": "Backend Architect & Lead",
+            "code": "BE_ARCH_LEAD",
+            "description": "Designs API contracts, database schemas, server-side business logic and worker flows.",
+            "responsibilities": ["Architecture design", "Database schema & migrations", "API endpoints", "Performance"],
+            "skills": ["Python", "FastAPI", "PostgreSQL", "SQLAlchemy", "API Security", "Docker"],
+            "capability_categories": ["code", "architecture", "database"],
+            "qualification_criteria": ["Python & SQL benchmark passed", "Deterministic error handling verified"],
+            "is_official": True
+        },
+        {
+            "id": "role-fe-eng",
+            "department_id": "dept-eng",
+            "name": "Frontend Engineer (Next.js/React)",
+            "code": "FE_ENG_REACT",
+            "description": "Builds accessible, dense operational user interfaces using Next.js App Router and Tailwind CSS.",
+            "responsibilities": ["UI component implementation", "Client state management", "Accessibility", "Design tokens"],
+            "skills": ["TypeScript", "React", "Next.js", "Tailwind CSS", "Accessibility (WCAG 2.1)"],
+            "capability_categories": ["code", "ui", "accessibility"],
+            "qualification_criteria": ["Component accessibility verified", "Zero layout shift on 1280/1440px"],
+            "is_official": True
+        },
+        {
+            "id": "role-po",
+            "department_id": "dept-prod",
+            "name": "Technical Product Owner",
+            "code": "TECH_PO",
+            "description": "Refines backlogs, defines verifiable acceptance criteria, and enforces Scrum discipline.",
+            "responsibilities": ["Backlog grooming", "User story breakdown", "Acceptance criteria definition", "Sprint goals"],
+            "skills": ["Scrum", "Product Requirements", "Domain Modeling", "Technical Writing"],
+            "capability_categories": ["planning", "specifications"],
+            "qualification_criteria": ["User story acceptance criteria verified actionable"],
+            "is_official": True
+        },
+        {
+            "id": "role-qa",
+            "department_id": "dept-qa",
+            "name": "QA & Quality Gate Validator",
+            "code": "QA_VALIDATOR",
+            "description": "Executes test suites, audits evidence against Definition of Done, and blocks unverified releases.",
+            "responsibilities": ["Automated test execution", "Acceptance criteria validation", "Security scanning", "Audit"],
+            "skills": ["Pytest", "Vitest", "Playwright", "Static Analysis", "Security Audit"],
+            "capability_categories": ["testing", "verification", "security"],
+            "qualification_criteria": ["Zero false negative test assertions"],
+            "is_official": True
+        },
+
+        # Divisi Produk
+        {
+            "id": "role-cpo",
+            "department_id": "dept-prod",
+            "name": "Chief Product Officer",
+            "code": "CPO",
+            "description": "Memimpin visi produk, strategi portofolio, dan validasi roadmap produk agency.",
+            "responsibilities": ["Visi Produk", "Roadmap Strategis", "Stakeholder Alignment", "Kepuasan Klien"],
+            "skills": ["Product Strategy", "Market Analysis", "Portfolio Governance", "Executive Reporting"],
+            "capability_categories": ["strategy", "planning"],
+            "qualification_criteria": ["Product vision alignment", "Strategic roadmap approved"],
+            "is_official": True
+        },
+        {
+            "id": "role-lead-pm",
+            "department_id": "dept-prod",
+            "name": "Lead Product Manager",
+            "code": "LEAD_PM",
+            "description": "Menyusun dokumen PRD/SRS formal, menguraikan Functional Requirements, dan mengelola scope proyek.",
+            "responsibilities": ["PRD Discovery & Synthesis", "Scope Management", "User Stories & Epics", "Acceptance Criteria Definition"],
+            "skills": ["Product Requirements (PRD)", "Scope Framing", "Backlog Grooming", "Technical Writing"],
+            "capability_categories": ["planning", "specifications"],
+            "qualification_criteria": ["PRD completeness verified", "Acceptance criteria actionable"],
+            "is_official": True
+        },
+        {
+            "id": "role-ba",
+            "department_id": "dept-prod",
+            "name": "Business Analyst",
+            "code": "BUSINESS_ANALYST",
+            "description": "Menganalisis proses bisnis, aturan data bisnis (Business Logic Rules), dan use cases.",
+            "responsibilities": ["Business Process Modeling", "Use Case Scenarios", "Cost-Benefit Evaluation", "Domain Analysis"],
+            "skills": ["Business Process", "Data Flow Modeling", "ROI Metrics", "Domain Analysis"],
+            "capability_categories": ["analysis", "business"],
+            "qualification_criteria": ["Domain workflows defined"],
+            "is_official": True
+        },
+        {
+            "id": "role-uxr",
+            "department_id": "dept-prod",
+            "name": "UX Researcher & Flow Analyst",
+            "code": "UX_RESEARCHER",
+            "description": "Meneliti persona pengguna, journey mapping, dan arsitektur alur informasi aplikasi.",
+            "responsibilities": ["User Personas", "Journey Mapping", "Information Architecture", "Wireframing"],
+            "skills": ["User Research", "Wireframing", "Journey Mapping", "Empathy Design"],
+            "capability_categories": ["ux", "research"],
+            "qualification_criteria": ["User personas validated"],
+            "is_official": True
+        },
+        {
+            "id": "role-ui-lead",
+            "department_id": "dept-prod",
+            "name": "Lead UI/UX Designer",
+            "code": "UI_DESIGNER_LEAD",
+            "description": "Merancang Design System Tokens (palet warna, tipografi, grid) dan komponen visual modern.",
+            "responsibilities": ["Design System Governance", "Color Tokens & Typography", "Component Libraries", "WCAG Accessibility"],
+            "skills": ["Figma", "Design Tokens", "Tailwind CSS", "WCAG 2.1 Contrast", "Responsive UI"],
+            "capability_categories": ["ui", "design"],
+            "qualification_criteria": ["Design token contrast verified"],
+            "is_official": True
+        },
+        # Divisi Rekayasa & Arsitektur
+        {
+            "id": "role-cto",
+            "department_id": "dept-eng",
+            "name": "Chief Technology Officer",
+            "code": "CTO",
+            "description": "Memimpin arsitektur teknis, standar teknologi, efisiensi komputasi, dan tata kelola kode.",
+            "responsibilities": ["Standar Arsitektur Teknis", "Pemilihan Tech Stack", "Code Governance", "Scalability Assurance"],
+            "skills": ["Clean Architecture", "Distributed Systems", "Cloud Governance", "Tech Leadership"],
+            "capability_categories": ["architecture", "leadership"],
+            "qualification_criteria": ["Technical blueprint validated"],
+            "is_official": True
+        },
+        {
+            "id": "role-architect",
+            "department_id": "dept-eng",
+            "name": "Principal System Architect",
+            "code": "SYS_ARCHITECT",
+            "description": "Merancang arsitektur modular, diagram relasi data (Mermaid), dan kontrak REST API/OpenAPI.",
+            "responsibilities": ["Technical Design Documents (TDD)", "REST API Contracts", "Mermaid Diagramming", "Modular Architecture"],
+            "skills": ["Multi-tier Architecture", "OpenAPI / Swagger", "Mermaid.js", "Separation of Concerns"],
+            "capability_categories": ["architecture", "specifications"],
+            "qualification_criteria": ["System architecture spec verified"],
+            "is_official": True
+        },
+        {
+            "id": "role-dba",
+            "department_id": "dept-eng",
+            "name": "Database Architect & Data Engineer",
+            "code": "DB_ARCHITECT",
+            "description": "Merancang skema relasional tabel (ERD), indeks performa, aturan normalisasi, dan migrasi ORM.",
+            "responsibilities": ["Entity Relational Modeling", "Database Migrations", "Index Optimization", "Data Integrity"],
+            "skills": ["SQLAlchemy", "PostgreSQL", "SQLite WAL", "ERD Diagrams", "Database Security"],
+            "capability_categories": ["database", "code"],
+            "qualification_criteria": ["Database schema normalization verified"],
+            "is_official": True
+        },
+        {
+            "id": "role-security",
+            "department_id": "dept-eng",
+            "name": "Cybersecurity & InfoSec Specialist",
+            "code": "INFOSEC_SPECIALIST",
+            "description": "Memeriksa kepatuhan keamanan (OWASP Top 10, sanitasi input API, proteksi injeksi, RBAC authorization).",
+            "responsibilities": ["Security Audits", "OWASP Top 10 Mitigation", "RBAC Policy Enforcement", "Secret Hygiene"],
+            "skills": ["Application Security", "Penetration Testing", "Input Sanitization", "Cryptography", "RBAC"],
+            "capability_categories": ["security", "audit"],
+            "qualification_criteria": ["Security audit clean"],
+            "is_official": True
+        },
+        {
+            "id": "role-tech-lead",
+            "department_id": "dept-eng",
+            "name": "Engineering Team Lead",
+            "code": "TECH_LEAD",
+            "description": "Mengatur strategi branching, memimpin code review, dan membimbing engineer pada problem teknis.",
+            "responsibilities": ["Code Review Governance", "Branching Strategy", "Technical Guidance", "Sprint Engineering Quality"],
+            "skills": ["Git Workflow", "Code Review", "Clean Code", "Design Patterns", "Python / TypeScript"],
+            "capability_categories": ["code", "leadership"],
+            "qualification_criteria": ["Zero merge regressions"],
+            "is_official": True
+        },
+        {
+            "id": "role-sr-fe-eng",
+            "department_id": "dept-eng",
+            "name": "Senior Frontend Engineer",
+            "code": "FE_SR_ENGINEER",
+            "description": "Membangun antarmuka web responsif, padat informasi, bebas layout shift, berbasis Next.js & Tailwind.",
+            "responsibilities": ["UI Components Development", "State Management", "API Client Integration", "Accessibility"],
+            "skills": ["React", "Next.js App Router", "Tailwind CSS", "TypeScript", "WCAG 2.1"],
+            "capability_categories": ["code", "ui", "frontend"],
+            "qualification_criteria": ["Zero layout shift verified", "Accessibility contrast passed"],
+            "is_official": True
+        },
+        {
+            "id": "role-be-eng",
+            "department_id": "dept-eng",
+            "name": "Senior Backend Engineer",
+            "code": "BE_SR_ENGINEER",
+            "description": "Membangun endpoint API FastAPI, business logic, integrasi ORM, dan worker asynchronous.",
+            "responsibilities": ["REST APIs Implementation", "Business Logic Services", "Database Queries", "Unit Tests"],
+            "skills": ["Python", "FastAPI", "SQLAlchemy", "Pydantic", "Unit Testing"],
+            "capability_categories": ["code", "backend", "api"],
+            "qualification_criteria": ["FastAPI endpoints test passed", "Deterministic error handling"],
+            "is_official": True
+        },
+        {
+            "id": "role-integ-eng",
+            "department_id": "dept-eng",
+            "name": "Integration & 3rd-Party Specialist",
+            "code": "INTEG_SPECIALIST",
+            "description": "Mengintegrasikan payment gateway, OAuth Google/GitHub, email notifier, dan webhooks pihak ketiga.",
+            "responsibilities": ["3rd-Party Connectors", "OAuth & Identity", "Payment Integrations", "Webhook Receivers"],
+            "skills": ["OAuth 2.0", "Payment Gateways", "REST Webhooks", "API Resilience"],
+            "capability_categories": ["code", "integrations"],
+            "qualification_criteria": ["Mock adapter integration verified"],
+            "is_official": True
+        },
+        # Divisi Mutu & Delivery
+        {
+            "id": "role-coo",
+            "department_id": "dept-delivery",
+            "name": "VP of Operations & Delivery",
+            "code": "COO",
+            "description": "Memastikan efisiensi operasional delivery, alokasi kapasitas tim, dan throughput sprint.",
+            "responsibilities": ["Delivery Operations", "Capacity Allocation", "Throughput Metrics", "Operational Governance"],
+            "skills": ["Agile Operations", "Capacity Modeling", "Throughput Governance", "Process Optimization"],
+            "capability_categories": ["operations", "leadership"],
+            "qualification_criteria": ["Delivery throughput stable"],
+            "is_official": True
+        },
+        {
+            "id": "role-scrum-master",
+            "department_id": "dept-delivery",
+            "name": "Lead Scrum Master",
+            "code": "SCRUM_MASTER_LEAD",
+            "description": "Memfasilitasi ritme Scrum, estimasi poin Fibonacci, mitigasi hambatan tim, dan memimpin Retrospektif.",
+            "responsibilities": ["Sprint Planning & Cadence", "Fibonacci Point Estimation", "Blocker Removal", "Retrospectives"],
+            "skills": ["Scrum Governance", "Velocity Tracking", "Burndown Analysis", "Retrospective Synthesis"],
+            "capability_categories": ["planning", "scrum"],
+            "qualification_criteria": ["Sprint burndown velocity within target"],
+            "is_official": True
+        },
+        {
+            "id": "role-qa-lead",
+            "department_id": "dept-delivery",
+            "name": "Lead QA & Test Automation",
+            "code": "QA_LEAD_SENTINEL",
+            "description": "Gatekeeper utama: memverifikasi Acceptance Criteria, mengeksekusi test suite, dan audit Definition of Done.",
+            "responsibilities": ["Automated Test Execution", "Acceptance Criteria Verification", "DoD Gatekeeping", "Regression Defense"],
+            "skills": ["Pytest", "Test Automation", "DoD Enforcement", "Static Analysis", "Assertion Auditing"],
+            "capability_categories": ["testing", "verification", "qa"],
+            "qualification_criteria": ["Zero false negative test assertions"],
+            "is_official": True
+        },
+        {
+            "id": "role-qa-tester",
+            "department_id": "dept-delivery",
+            "name": "QA Manual & Edge-Case Hunter",
+            "code": "QA_EDGE_HUNTER",
+            "description": "Mendeteksi edge-case bugs, memvalidasi usability, input anomali, dan skenario kegagalan tak terduga.",
+            "responsibilities": ["Edge Case Hunting", "Usability Validation", "Boundary Value Testing", "Defect Reporting"],
+            "skills": ["Exploratory Testing", "Edge Case Analysis", "UX Auditing", "Defect Reproduction"],
+            "capability_categories": ["testing", "qa"],
+            "qualification_criteria": ["Critical edge cases identified"],
+            "is_official": True
+        },
+        {
+            "id": "role-devops",
+            "department_id": "dept-delivery",
+            "name": "Senior DevOps & CI/CD Engineer",
+            "code": "DEVOPS_ENGINEER",
+            "description": "Mengelola isolasi worktree branch, pipeline CI/CD, GitHub Actions, dan lingkungan staging.",
+            "responsibilities": ["Worktree Branch Management", "GitHub Actions CI", "Containerization", "Pull Request Workflows"],
+            "skills": ["Git Worktree", "GitHub Actions", "Docker", "CI/CD Pipelines", "Shell Scripting"],
+            "capability_categories": ["devops", "infrastructure"],
+            "qualification_criteria": ["CI pipeline determinism verified"],
+            "is_official": True
+        },
+        {
+            "id": "role-release-mgr",
+            "department_id": "dept-delivery",
+            "name": "Release Coordinator & Tech Writer",
+            "code": "RELEASE_COORDINATOR",
+            "description": "Menyusun catatan rilis (RELEASE_NOTES.md), changelog, dokumentasi teknis, dan koordinasi delivery.",
+            "responsibilities": ["Release Notes Generation", "Changelog Versioning", "Technical Documentation", "Delivery Handoff"],
+            "skills": ["Release Management", "Markdown Synthesis", "Technical Writing", "Changelog Standards"],
+            "capability_categories": ["release", "documentation"],
+            "qualification_criteria": ["Release documentation verified"],
+            "is_official": True
+        }
+    ]
+
+    for r_info in roles_data:
+        existing_r = db.query(JobRole).filter(
+            (JobRole.id == r_info["id"]) | (JobRole.code == r_info["code"])
+        ).first()
+        if existing_r:
+            existing_r.name = r_info["name"]
+            existing_r.code = r_info["code"]
+            existing_r.department_id = r_info["department_id"]
+            existing_r.description = r_info["description"]
+            existing_r.responsibilities = r_info["responsibilities"]
+            existing_r.skills = r_info["skills"]
+            existing_r.capability_categories = r_info["capability_categories"]
+            existing_r.qualification_criteria = r_info["qualification_criteria"]
+        else:
+            db.add(JobRole(**r_info))
+    db.flush()
+
+    # 3. Foundational Specialist AI Agents
+    agents_data = [
+        {
+            "id": "agent-atlas",
+            "name": "Aditya Pratama",
+            "title": "Lead Backend Architect (Atlas)",
+            "role_id": "role-be-arch",
+            "department_id": "dept-eng",
+            "instructions": "Maintain strict domain boundaries, validate all inputs, enforce database integrity, and use type hints. Bertindak sebagai Lead Backend Architect.",
+            "skills": ["Python / FastAPI", "SQLAlchemy / PostgreSQL", "Clean Architecture", "API Design"]
+        },
+        {
+            "id": "agent-kairo",
+            "name": "Bayu Setiawan",
+            "title": "Senior Frontend Engineer (Kairo)",
+            "role_id": "role-fe-eng",
+            "department_id": "dept-eng",
+            "instructions": "Follow UX_UI_DESIGN_SYSTEM.md strictly. Ensure keyboard accessibility, semantic tokens, and no neon AI tropes.",
+            "skills": ["Next.js App Router", "Tailwind Design System", "React", "WCAG 2.1"]
+        },
+        {
+            "id": "agent-scribe",
+            "name": "Dewi Lestari",
+            "title": "Technical Product Owner (Scribe)",
+            "role_id": "role-po",
+            "department_id": "dept-prod",
+            "instructions": "Ensure every work item has testable acceptance criteria before marking ready. Maintain PRD specifications.",
+            "skills": ["Product Requirements", "Scrum Refinement", "Backlog Decomposition", "Domain Modeling"]
+        },
+        {
+            "id": "agent-sentinel",
+            "name": "Sentinel (QA Lead)",
+            "title": "Lead QA Engineer & Gatekeeper",
+            "role_id": "role-qa",
+            "department_id": "dept-qa",
+            "instructions": "Verify evidence before assertions. Reject tasks lacking passing tests. Gatekeeper for Definition of Done.",
+            "skills": ["Automated Pytest Suites", "Acceptance Criteria Verification", "Definition of Done Audit", "Regression Testing"]
+        },
+        {
+            "id": "agent-davinci",
+            "name": "Bramantyo (DaVinci)",
+            "title": "Principal System Architect",
+            "role_id": "role-architect",
+            "department_id": "dept-eng",
+            "instructions": "Bertindak sebagai Principal System Architect. Rancang arsitektur modular, diagram relasi data, dan kontrak REST API OpenAPI yang deterministik.",
+            "skills": ["Clean Architecture", "API Contracts (OpenAPI)", "Mermaid Data Flow", "Component Modeling", "System Scalability"]
+        },
+        {
+            "id": "agent-nexus",
+            "name": "Arya Wibawa (Nexus)",
+            "title": "Database Architect & Data Engineer",
+            "role_id": "role-dba",
+            "department_id": "dept-eng",
+            "instructions": "Bertindak sebagai Database Architect. Pastikan integritas relasi tabel, rancang skema ternormalisasi, dan optimalkan struktur query database.",
+            "skills": ["Relational ERD Modeling", "SQLAlchemy / SQLite WAL", "Schema Migrations", "Index Optimization", "Data Integrity"]
+        },
+        {
+            "id": "agent-cipher",
+            "name": "Farhan Malik (Cipher)",
+            "title": "Cybersecurity & InfoSec Specialist",
+            "role_id": "role-security",
+            "department_id": "dept-eng",
+            "instructions": "Bertindak sebagai Cybersecurity Officer. Lindungi sistem dari celah OWASP Top 10, audit otorisasi role-based, dan pastikan tidak ada kebocoran credential.",
+            "skills": ["OWASP Top 10 Mitigation", "API Input Sanitization", "RBAC Access Control", "Data Encryption", "Security Audit"]
+        },
+        {
+            "id": "agent-pixel",
+            "name": "Siti Rahma (Pixel)",
+            "title": "Lead UI/UX Designer",
+            "role_id": "role-ui-lead",
+            "department_id": "dept-des",
+            "instructions": "Bertindak sebagai Lead UI Designer. Tegakkan pedoman UX_UI_DESIGN_SYSTEM.md: palet warna slate/zinc, tipografi berhierarki, accessibility WCAG 2.1, tanpa dekorasi AI norak.",
+            "skills": ["Design Tokens & Systems", "WCAG 2.1 Accessibility", "Tailwind UI Components", "UX Wireframing"]
+        },
+        {
+            "id": "agent-forge",
+            "name": "Reza Mahendra (Forge)",
+            "title": "Integration & 3rd-Party Specialist",
+            "role_id": "role-integ-eng",
+            "department_id": "dept-eng",
+            "instructions": "Bertindak sebagai Integration Specialist. Bangun konektor pihak ketiga (payment gateway, OAuth, webhooks) menggunakan mock adapters yang deterministik sebelum live approval.",
+            "skills": ["Third-Party API Integrations", "OAuth 2.0 & Webhooks", "Mock Adapter Design", "API Resilience"]
+        },
+        {
+            "id": "agent-orion",
+            "name": "Bagas Surya (Orion)",
+            "title": "Lead Scrum Master",
+            "role_id": "role-scrum-master",
+            "department_id": "dept-delivery",
+            "instructions": "Bertindak sebagai Lead Scrum Master. Fasilitasi sprint cadence, estimasi poin Fibonacci realistis, singkirkan hambatan developer, dan pimpin Retrospektif Sprint.",
+            "skills": ["Agile Scrum Governance", "Fibonacci Story Point Estimation", "Sprint Capacity Planning", "Blocker Mitigation", "Retrospective Analysis"]
+        },
+        {
+            "id": "agent-vector",
+            "name": "Doni Prasetyo (Vector)",
+            "title": "Senior DevOps & CI/CD Engineer",
+            "role_id": "role-devops",
+            "department_id": "dept-delivery",
+            "instructions": "Bertindak sebagai Senior DevOps Engineer. Sediakan worktree branch terisolasi untuk eksekusi koding agen, atur integrasi GitHub PR, dan jaga stabilitas CI.",
+            "skills": ["Git Worktree Isolation", "GitHub Actions CI/CD", "Branch Management", "Build Automation", "Environment Setup"]
+        },
+        {
+            "id": "agent-nova",
+            "name": "Anisa Putri (Nova)",
+            "title": "Release Coordinator & Tech Writer",
+            "role_id": "role-release-mgr",
+            "department_id": "dept-delivery",
+            "instructions": "Bertindak sebagai Release Coordinator. Himpun seluruh deliverable yang lulus QA, susun catatan rilis terstruktur, dan dokumentasikan changelog resmi proyek.",
+            "skills": ["Release Notes Synthesis", "Changelog Versioning", "Technical Documentation", "API Documentation", "Release Packaging"]
+        }
+    ]
+
+    for a_info in agents_data:
+        existing_a = db.query(AIAgent).filter(AIAgent.id == a_info["id"]).first()
+        if existing_a:
+            existing_a.name = a_info["name"]
+            existing_a.title = a_info["title"]
+            existing_a.role_id = a_info["role_id"]
+            existing_a.department_id = a_info["department_id"]
+            existing_a.instructions = a_info["instructions"]
+            existing_a.lifecycle_state = "active"
+            existing_a.availability_state = "available"
+            existing_a.qualification_state = "passed"
+        else:
+            new_agent = AIAgent(
+                id=a_info["id"],
+                name=a_info["name"],
+                title=a_info["title"],
+                role_id=a_info["role_id"],
+                department_id=a_info["department_id"],
+                lifecycle_state="active",
+                availability_state="available",
+                qualification_state="passed",
+                max_concurrency=2,
+                current_concurrency=0,
+                engine_adapter="mock",
+                instructions=a_info["instructions"],
+                current_profile_version=1
+            )
+            db.add(new_agent)
+            db.flush()
+
+        # Ensure skills exist
+        for s_name in a_info["skills"]:
+            existing_s = db.query(AgentSkill).filter(
+                AgentSkill.agent_id == a_info["id"],
+                AgentSkill.name == s_name
+            ).first()
+            if not existing_s:
+                db.add(AgentSkill(
+                    agent_id=a_info["id"],
+                    name=s_name,
+                    is_verified=True,
+                    verified_evidence="Certified via Enterprise Qualification Benchmark"
+                ))
+
+        # Ensure Profile Version
+        existing_pv = db.query(AgentProfileVersion).filter(
+            AgentProfileVersion.agent_id == a_info["id"],
+            AgentProfileVersion.version_number == 1
+        ).first()
+        if not existing_pv:
+            db.add(AgentProfileVersion(
+                agent_id=a_info["id"],
+                version_number=1,
+                instructions=a_info["instructions"],
+                config_snapshot={"max_concurrency": 2, "engine": "mock"},
+                change_rationale="Enterprise Agency Formation Bootstrap"
+            ))
+
+    db.add(AuditEvent(
+        actor="Agency Owner",
+        action="ENTERPRISE_AGENCY_STRUCTURE_SYNCED",
+        target_type="ORGANIZATION",
+        target_id="ROOT",
+        policy_basis="ENTERPRISE_WORKFORCE_SPEC_V2",
+        details={
+            "departments_count": len(depts_data),
+            "roles_count": len(roles_data),
+            "agents_count": len(agents_data)
+        }
+    ))
+    db.commit()
+
+
 def seed_database(db: Session, seed_projects: bool | None = None):
     if seed_projects is None:
         seed_projects = os.environ.get("AGENCYOS_SEED_PROJECTS", "").lower() in ("1", "true")
-    # 1. Departments and Workforce
-    if not db.query(Department).first():
-        eng_dept = Department(
-            id="dept-eng",
-            name="Engineering",
-            code="ENG",
-            description="Software architecture, backend, frontend, API and systems engineering."
-        )
-        prod_dept = Department(
-            id="dept-prod",
-            name="Product & Research",
-            code="PROD",
-            description="Product strategy, requirements analysis, technical specs and Scrum ownership."
-        )
-        qa_dept = Department(
-            id="dept-qa",
-            name="Quality Assurance",
-            code="QA",
-            description="Automated testing, security quality gates, performance and code review."
-        )
-        des_dept = Department(
-            id="dept-des",
-            name="Design System",
-            code="DESIGN",
-            description="UI/UX design system tokens, accessible interaction, and visual standards."
-        )
 
-        db.add_all([eng_dept, prod_dept, qa_dept, des_dept])
-        db.flush()
-
-        # 2. Standard Job Roles
-        role_be = JobRole(
-            id="role-be-arch",
-            department_id=eng_dept.id,
-            name="Backend Architect & Lead",
-            code="BE_ARCH_LEAD",
-            description="Designs API contracts, database schemas, server-side business logic and worker flows.",
-            responsibilities=["Architecture design", "Database schema & migrations", "API endpoints", "Performance"],
-            skills=["Python", "FastAPI", "PostgreSQL", "SQLAlchemy", "API Security", "Docker"],
-            capability_categories=["code", "architecture", "database"],
-            qualification_criteria=["Python & SQL benchmark passed", "Deterministic error handling verified"],
-            is_official=True,
-            version=1
-        )
-
-        role_fe = JobRole(
-            id="role-fe-eng",
-            department_id=eng_dept.id,
-            name="Frontend Engineer (Next.js/React)",
-            code="FE_ENG_REACT",
-            description="Builds accessible, dense operational user interfaces using Next.js App Router and Tailwind CSS.",
-            responsibilities=["UI component implementation", "Client state management", "Accessibility", "Design tokens"],
-            skills=["TypeScript", "React", "Next.js", "Tailwind CSS", "Accessibility (WCAG 2.1)"],
-            capability_categories=["code", "ui", "accessibility"],
-            qualification_criteria=["Component accessibility verified", "Zero layout shift on 1280/1440px"],
-            is_official=True,
-            version=1
-        )
-
-        role_po = JobRole(
-            id="role-po",
-            department_id=prod_dept.id,
-            name="Technical Product Owner",
-            code="TECH_PO",
-            description="Refines backlogs, defines verifiable acceptance criteria, and enforces Scrum discipline.",
-            responsibilities=["Backlog grooming", "User story breakdown", "Acceptance criteria definition", "Sprint goals"],
-            skills=["Scrum", "Product Requirements", "Domain Modeling", "Technical Writing"],
-            capability_categories=["planning", "specifications"],
-            qualification_criteria=["User story acceptance criteria verified actionable"],
-            is_official=True,
-            version=1
-        )
-
-        role_qa = JobRole(
-            id="role-qa",
-            department_id=qa_dept.id,
-            name="QA & Quality Gate Validator",
-            code="QA_VALIDATOR",
-            description="Executes test suites, audits evidence against Definition of Done, and blocks unverified releases.",
-            responsibilities=["Automated test execution", "Acceptance criteria validation", "Security scanning", "Audit"],
-            skills=["Pytest", "Vitest", "Playwright", "Static Analysis", "Security Audit"],
-            capability_categories=["testing", "verification", "security"],
-            qualification_criteria=["Zero false negative test assertions"],
-            is_official=True,
-            version=1
-        )
-
-        db.add_all([role_be, role_fe, role_po, role_qa])
-        db.flush()
-
-        # 3. Foundational Agents
-        agent_atlas = AIAgent(
-            id="agent-atlas",
-            name="Aditya Pratama",
-            title="Lead Backend Architect",
-            role_id=role_be.id,
-            department_id=eng_dept.id,
-            lifecycle_state="active",
-            availability_state="available",
-            qualification_state="passed",
-            max_concurrency=2,
-            current_concurrency=0,
-            engine_adapter="mock",
-            instructions="Maintain strict domain boundaries, validate all inputs, enforce database integrity, and use type hints.",
-            current_profile_version=1
-        )
-
-        agent_kairo = AIAgent(
-            id="agent-kairo",
-            name="Bayu Setiawan",
-            title="Senior Frontend Engineer",
-            role_id=role_fe.id,
-            department_id=eng_dept.id,
-            lifecycle_state="active",
-            availability_state="available",
-            qualification_state="passed",
-            max_concurrency=2,
-            current_concurrency=0,
-            engine_adapter="mock",
-            instructions="Follow UX_UI_DESIGN_SYSTEM.md strictly. Ensure keyboard accessibility, semantic tokens, and no neon AI tropes.",
-            current_profile_version=1
-        )
-
-        agent_scribe = AIAgent(
-            id="agent-scribe",
-            name="Dewi Lestari",
-            title="Technical Product Owner",
-            role_id=role_po.id,
-            department_id=prod_dept.id,
-            lifecycle_state="active",
-            availability_state="available",
-            qualification_state="passed",
-            max_concurrency=1,
-            current_concurrency=0,
-            engine_adapter="mock",
-            instructions="Ensure every work item has testable acceptance criteria before marking ready.",
-            current_profile_version=1
-        )
-
-        agent_sentinel = AIAgent(
-            id="agent-sentinel",
-            name="Rian Nugraha",
-            title="QA Gatekeeper",
-            role_id=role_qa.id,
-            department_id=qa_dept.id,
-            lifecycle_state="testing",
-            availability_state="busy",
-            qualification_state="in_progress",
-            max_concurrency=1,
-            current_concurrency=1,
-            engine_adapter="mock",
-            instructions="Verify evidence before assertions. Reject tasks lacking passing tests.",
-            current_profile_version=1
-        )
-
-        db.add_all([agent_atlas, agent_kairo, agent_scribe, agent_sentinel])
-        db.flush()
-
-        # 4. Agent Skills & Profile Versions
-        db.add(AgentProfileVersion(
-            agent_id=agent_atlas.id,
-            version_number=1,
-            instructions=agent_atlas.instructions,
-            config_snapshot={"max_concurrency": 2, "engine": "mock"},
-            change_rationale="Initial deployment profile"
-        ))
-        db.add(AgentSkill(agent_id=agent_atlas.id, name="Python / FastAPI", is_verified=True, verified_evidence="Benchmark test passed"))
-        db.add(AgentSkill(agent_id=agent_atlas.id, name="SQLAlchemy / PostgreSQL", is_verified=True, verified_evidence="Migration test passed"))
-
-        db.add(AgentProfileVersion(
-            agent_id=agent_kairo.id,
-            version_number=1,
-            instructions=agent_kairo.instructions,
-            config_snapshot={"max_concurrency": 2, "engine": "mock"},
-            change_rationale="Initial deployment profile"
-        ))
-        db.add(AgentSkill(agent_id=agent_kairo.id, name="Next.js App Router", is_verified=True, verified_evidence="Component suite passed"))
-        db.add(AgentSkill(agent_id=agent_kairo.id, name="Tailwind Design System", is_verified=True, verified_evidence="Accessibility audit passed"))
-
-        db.commit()
+    # 1. Seed or synchronize enterprise agency workforce
+    seed_enterprise_agency(db)
 
     if seed_projects:
         # 5. Foundational Projects & Sprints
         if not db.query(Project).first():
-            agent_atlas = db.query(AIAgent).filter(AIAgent.name == "Atlas").first()
-            agent_kairo = db.query(AIAgent).filter(AIAgent.name == "Kairo").first()
-            agent_sentinel = db.query(AIAgent).filter(AIAgent.name == "Sentinel").first()
+            agent_atlas = db.query(AIAgent).filter((AIAgent.id == "agent-atlas") | (AIAgent.name == "Aditya Pratama")).first()
+            agent_kairo = db.query(AIAgent).filter((AIAgent.id == "agent-kairo") | (AIAgent.name == "Bayu Setiawan")).first()
+            agent_sentinel = db.query(AIAgent).filter((AIAgent.id == "agent-sentinel") | (AIAgent.name == "Sentinel (QA Lead)")).first()
 
             proj_core = Project(
                 id="prj-core",

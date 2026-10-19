@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Search, Sun, Moon, CheckCircle2, AlertCircle, Shield, User } from "lucide-react";
+import { Search, Sun, Moon, CheckCircle2, AlertCircle, Shield, User, Crown } from "lucide-react";
 import { useTheme } from "../theme/ThemeProvider";
 
 export function Topbar() {
@@ -64,17 +64,17 @@ export function Topbar() {
           {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
         </button>
 
-        {/* Current Operator Context */}
+        {/* Current Operator Context: Agency Owner */}
         <div className="flex items-center space-x-2 pl-2 border-l border-borderBase-light dark:border-borderBase-dark">
-          <div className="w-6 h-6 rounded-full bg-accent/15 border border-accent/30 text-accent flex items-center justify-center text-xs font-semibold">
-            <User className="w-3.5 h-3.5" />
+          <div className="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-semibold">
+            <Crown className="w-3.5 h-3.5" />
           </div>
           <div className="hidden sm:flex flex-col text-left">
-            <span className="text-xs font-medium text-textPrimary-light dark:text-textPrimary-dark leading-tight">
-              Agency Owner
+            <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark leading-tight flex items-center gap-1">
+              <span>Agency Owner</span>
             </span>
             <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark leading-tight">
-              Supervisor
+              Managing Director
             </span>
           </div>
         </div>

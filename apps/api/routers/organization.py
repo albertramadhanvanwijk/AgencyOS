@@ -161,3 +161,18 @@ def create_role(role_in: JobRoleCreate, db: Session = Depends(get_db)):
         department_name=dept.name,
         agents_count=0,
     )
+
+
+@router.post("/sync-agency-structure")
+def sync_agency_structure(db: Session = Depends(get_db)):
+    """
+    Synchronizes the full enterprise digital agency organizational structure
+    (3 Directorates, 19 Roles, 10 Specialist Agents with verified skills).
+    """
+    from apps.api.core.seed import seed_enterprise_agency
+    seed_enterprise_agency(db)
+    return {
+        "status": "success",
+        "message": "Enterprise agency organization structure successfully synchronized."
+    }
+

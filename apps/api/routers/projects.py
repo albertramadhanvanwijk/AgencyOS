@@ -490,6 +490,7 @@ def get_project_sprint_capacity(
 
 class SprintStatusUpdate(BaseModel):
     status: str # active, completed, planning
+    move_unfinished_to: Optional[str] = None
 
 
 @router.patch("/{project_id}/sprints/{sprint_id}/status", response_model=SprintOut)
@@ -552,6 +553,33 @@ def update_sprint_status(
 
     if target_status == "completed":
         sprint.end_date = datetime.now(timezone.utc)
+
+        # Relocate unfinished work items (status != "done")
+        unfinished_items = db.query(WorkItem).filter(
+            WorkItem.sprint_id == sprint.id,
+            WorkItem.status != "done"
+        ).all()
+
+        if unfinished_items:
+            dest = status_update.move_unfinished_to or "backlog"
+            if dest == "backlog":
+                for item in unfinished_items:
+                    item.sprint_id = None
+                    if item.status in ["in_progress", "in_review", "blocked"]:
+                        item.status = "ready"
+            else:
+                target_sprint = db.query(Sprint).filter(
+                    Sprint.id == dest,
+                    Sprint.project_id == project_id
+                ).first()
+                if target_sprint:
+                    for item in unfinished_items:
+                        item.sprint_id = target_sprint.id
+                else:
+                    for item in unfinished_items:
+                        item.sprint_id = None
+                        if item.status in ["in_progress", "in_review", "blocked"]:
+                            item.status = "ready"
 
     prev_status = sprint.status
     sprint.status = target_status

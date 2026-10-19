@@ -84,6 +84,7 @@ interface Sprint {
   capacity_points: number;
   start_date: string;
   end_date?: string;
+  created_at?: string;
   items_count?: number;
 }
 
@@ -702,9 +703,11 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
               const totalPoints = sprintItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
 
               // Find if any prior sprint in chronological order is uncompleted
-              const sortedSprints = [...sprints].sort(
-                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-              );
+              const sortedSprints = [...sprints].sort((a, b) => {
+                const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return timeA - timeB;
+              });
               const currentSprintIdx = sortedSprints.findIndex((s) => s.id === sprint.id);
               const uncompletedPrevSprint =
                 currentSprintIdx > 0

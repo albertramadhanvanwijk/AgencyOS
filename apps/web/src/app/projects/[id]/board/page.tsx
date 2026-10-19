@@ -301,13 +301,9 @@ export default function ScrumBoardPage({
   const [assigningAgentId, setAssigningAgentId] = useState<string | null>(null);
   const [showRecsSection, setShowRecsSection] = useState(false);
 
-  // Sprint Completion & Rollover Management State
+  // Sprint Completion State
   const [isCompleteSprintModalOpen, setIsCompleteSprintModalOpen] = useState(false);
-  const [isNewSprintModalOpen, setIsNewSprintModalOpen] = useState(false);
-  const [nextSprintName, setNextSprintName] = useState("Sprint 2: Multi-Agent Collaboration");
-  const [nextSprintGoal, setNextSprintGoal] = useState("Peningkatan kapabilitas platform & delivery fitur");
-  const [nextSprintCapacity, setNextSprintCapacity] = useState(25);
-  const [shouldRollover, setShouldRollover] = useState(true);
+  const [unfinishedDestination, setUnfinishedDestination] = useState<string>("backlog");
   const [sprintSubmitting, setSprintSubmitting] = useState(false);
 
   // Execution Run State
@@ -884,7 +880,7 @@ export default function ScrumBoardPage({
     }
   };
 
-  const handleCompleteSprintOnly = async () => {
+  const handleCompleteSprint = async () => {
     if (!sprintCapacity?.sprint_id) return;
     try {
       setSprintSubmitting(true);
@@ -892,7 +888,10 @@ export default function ScrumBoardPage({
       const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintCapacity.sprint_id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify({
+          status: "completed",
+          move_unfinished_to: unfinishedDestination,
+        }),
       });
 
       if (!res.ok) {
@@ -901,39 +900,6 @@ export default function ScrumBoardPage({
       }
 
       setIsCompleteSprintModalOpen(false);
-      await fetchBoardData();
-    } catch (err: unknown) {
-      if (err instanceof Error) setTransitionError(err.message);
-    } finally {
-      setSprintSubmitting(false);
-    }
-  };
-
-  const handleCompleteAndStartNewSprint = async () => {
-    try {
-      setSprintSubmitting(true);
-      setTransitionError(null);
-      const payload = {
-        name: nextSprintName.trim() || "Sprint Baru",
-        goal: nextSprintGoal.trim() || undefined,
-        capacity_points: Number(nextSprintCapacity) || 20,
-        status: "active",
-        rollover_unfinished_from_sprint_id: shouldRollover && sprintCapacity?.sprint_id ? sprintCapacity.sprint_id : undefined,
-      };
-
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || "Gagal membuat sprint baru");
-      }
-
-      setIsCompleteSprintModalOpen(false);
-      setIsNewSprintModalOpen(false);
       await fetchBoardData();
     } catch (err: unknown) {
       if (err instanceof Error) setTransitionError(err.message);
@@ -1527,20 +1493,20 @@ export default function ScrumBoardPage({
                   Selesaikan Sprint
                 </Button>
               ) : sprintCapacity.sprint_status === "completed" ? (
-                <div className="flex items-center space-x-1 px-2 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-mono">
+                <div className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-mono">
                   <CheckCircle2 className="w-3 h-3 text-status-success" />
                   <span>Arsip Sprint</span>
                 </div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => setIsNewSprintModalOpen(true)}
-                  leftIcon={<Play className="w-3.5 h-3.5" />}
-                >
-                  Mulai Sprint Baru
-                </Button>
-              )}
+              ) : sprintCapacity.sprint_status === "pending_approval" ? (
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[11px] font-medium font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Pending Kickoff Approval</span>
+                </div>
+              ) : sprintCapacity.sprint_status === "planning" ? (
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-medium font-mono">
+                  <span>Planning</span>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -3418,167 +3384,52 @@ export default function ScrumBoardPage({
               </div>
             </div>
 
-            {/* Next Sprint Rollover Options */}
-            <div className="space-y-3 text-xs">
-              <label className="flex items-start space-x-2.5 p-2.5 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={shouldRollover}
-                  onChange={(e) => setShouldRollover(e.target.checked)}
-                  className="mt-0.5 rounded text-accent focus:ring-accent"
-                />
-                <div>
-                  <span className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
-                    Lanjutkan ke Sprint Berikutnya & Alihkan Task Sisa (Rekomendasi)
-                  </span>
-                  <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                    Task yang belum berstatus &apos;Done&apos; akan dialihkan otomatis (Rollover) ke Sprint baru tanpa kehilangan riwayat kerja agen.
-                  </span>
-                </div>
-              </label>
-
-              {shouldRollover && (
-                <div className="space-y-2.5 p-3 rounded border border-accent/20 bg-accent/5 dark:bg-accent/10">
-                  <div>
-                    <label className="font-medium block mb-1">Nama Sprint Baru *</label>
-                    <input
-                      type="text"
-                      value={nextSprintName}
-                      onChange={(e) => setNextSprintName(e.target.value)}
-                      className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
-                      placeholder="e.g. Sprint 2: Multi-Agent Collaboration"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-medium block mb-1">Goal Sprint Baru</label>
-                    <input
-                      type="text"
-                      value={nextSprintGoal}
-                      onChange={(e) => setNextSprintGoal(e.target.value)}
-                      className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
-                      placeholder="Tujuan spesifik sprint ini"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-medium block mb-1">Target Kapasitas (Story Points)</label>
-                    <input
-                      type="number"
-                      value={nextSprintCapacity}
-                      onChange={(e) => setNextSprintCapacity(Number(e.target.value))}
-                      className="w-28 h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Unfinished Issues Destination */}
+            {items.some((i) => i.status !== "done") && (
+              <div className="space-y-2 p-3 rounded-md bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-xs">
+                <label className="font-medium block text-textPrimary-light dark:text-textPrimary-dark">
+                  Pindahkan task yang belum selesai ke:
+                </label>
+                <select
+                  value={unfinishedDestination}
+                  onChange={(e) => setUnfinishedDestination(e.target.value)}
+                  className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
+                >
+                  <option value="backlog">Backlog (Default)</option>
+                  {sprints
+                    .filter((s) => s.id !== sprintCapacity?.sprint_id && (s.status === "planning" || s.status === "pending_approval"))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.status === "pending_approval" ? "Pending Approval" : "Planning"})
+                      </option>
+                    ))}
+                </select>
+                <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                  Task yang belum &apos;Done&apos; akan dialihkan otomatis tanpa kehilangan riwayat progress agen.
+                </p>
+              </div>
+            )}
 
             {/* Modal Actions */}
             <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
               <Button size="sm" variant="outline" onClick={() => setIsCompleteSprintModalOpen(false)}>
                 Batal
               </Button>
-              <div className="flex space-x-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCompleteSprintOnly}
-                  isLoading={sprintSubmitting}
-                >
-                  Hanya Selesaikan
-                </Button>
-                {shouldRollover && (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={handleCompleteAndStartNewSprint}
-                    isLoading={sprintSubmitting}
-                    leftIcon={<Play className="w-3.5 h-3.5" />}
-                  >
-                    Selesaikan & Mulai Sprint Baru →
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Start New Sprint Modal */}
-      {isNewSprintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-md w-full p-5 space-y-4 shadow-xl">
-            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div>
-                <h3 className="text-base font-semibold flex items-center space-x-2">
-                  <Play className="w-4 h-4 text-accent" />
-                  <span>Mulai Sprint Baru</span>
-                </h3>
-                <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                  Mulai siklus sprint baru untuk project {project?.key}.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsNewSprintModalOpen(false)}
-                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-medium block mb-1">Nama Sprint *</label>
-                <input
-                  type="text"
-                  value={nextSprintName}
-                  onChange={(e) => setNextSprintName(e.target.value)}
-                  className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                  placeholder="e.g. Sprint 2: Multi-Agent Collaboration"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium block mb-1">Goal Sprint</label>
-                <input
-                  type="text"
-                  value={nextSprintGoal}
-                  onChange={(e) => setNextSprintGoal(e.target.value)}
-                  className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                  placeholder="Tujuan spesifik sprint ini"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium block mb-1">Kapasitas Target (Story Points)</label>
-                <input
-                  type="number"
-                  value={nextSprintCapacity}
-                  onChange={(e) => setNextSprintCapacity(Number(e.target.value))}
-                  className="w-28 h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
-              <Button size="sm" variant="outline" onClick={() => setIsNewSprintModalOpen(false)}>
-                Batal
-              </Button>
               <Button
                 size="sm"
                 variant="primary"
-                onClick={handleCompleteAndStartNewSprint}
+                onClick={handleCompleteSprint}
                 isLoading={sprintSubmitting}
-                leftIcon={<Play className="w-3.5 h-3.5" />}
+                leftIcon={<CheckCircle className="w-3.5 h-3.5" />}
               >
-                Mulai Sprint Ini →
+                Selesaikan Sprint
               </Button>
             </div>
           </div>
         </div>
       )}
+
+
 
       {/* AI Auto-Planning Live Pipeline Modal */}
       {isAutoPlanPipelineOpen && (

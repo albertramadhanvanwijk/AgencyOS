@@ -158,7 +158,7 @@ export default function SettingsPage() {
 
   const handleOpenAddModal = () => {
     setEditingLlmId(null);
-    setFormName("Google Gemini (Antigravity)");
+    setFormName("Google Gemini");
     setFormProvider("Google Gemini");
     setFormBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
     setFormApiKey("");
@@ -186,21 +186,18 @@ export default function SettingsPage() {
     setFormProvider(provider);
     setFormTestResult(null);
     if (provider === "Google Gemini") {
-      setFormName("Google Gemini (Antigravity)");
+      setFormName("Google Gemini");
       setFormBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
       setFormModel("gemini-2.0-flash");
-    } else if (provider === "OpenAI") {
-      setFormName("OpenAI Official");
+    } else if (provider === "OpenAI ChatGPT" || provider === "OpenAI") {
+      setFormProvider("OpenAI ChatGPT");
+      setFormName("OpenAI ChatGPT");
       setFormBaseUrl("https://api.openai.com/v1");
-      setFormModel("gpt-4o-mini");
-    } else if (provider === "OpenRouter") {
-      setFormName("OpenRouter Hub");
-      setFormBaseUrl("https://openrouter.ai/api/v1");
-      setFormModel("google/gemini-2.0-flash-exp:free");
-    } else if (provider === "Ollama Local") {
-      setFormName("Local Ollama");
-      setFormBaseUrl("http://localhost:11434/v1");
-      setFormModel("llama3");
+      setFormModel("gpt-4o");
+    } else if (provider === "Claude Code") {
+      setFormName("Claude Code");
+      setFormBaseUrl("https://api.anthropic.com/v1");
+      setFormModel("claude-3-7-sonnet-20250219");
     }
   };
 
@@ -421,7 +418,7 @@ export default function SettingsPage() {
               <div className="space-y-1 max-w-md">
                 <h3 className="text-sm font-semibold">Belum Ada LLM yang Terhubung</h3>
                 <p className="text-xs text-textMuted-light dark:text-textMuted-dark leading-relaxed">
-                  Secara default sistem belum mengaktifkan LLM provider apapun. Klik tombol di bawah untuk menambahkan API Key (Google Gemini, OpenAI, atau Ollama Local).
+                  Secara default sistem belum mengaktifkan LLM provider apapun. Klik tombol di bawah untuk menambahkan API Key (Google Gemini, OpenAI ChatGPT, atau Claude Code).
                 </p>
               </div>
               <Button
@@ -683,50 +680,39 @@ export default function SettingsPage() {
               {/* Quick Presets */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium block">Pilih Preset Cepat Provider:</label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => handleApplyPreset("Google Gemini")}
-                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
                       formProvider === "Google Gemini"
-                        ? "bg-accent/15 text-accent border-accent"
+                        ? "bg-accent/15 text-accent border-accent font-semibold"
                         : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
                     }`}
                   >
-                    ⚡ Google Gemini (Antigravity)
+                    ✨ Google Gemini
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleApplyPreset("OpenAI")}
-                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
-                      formProvider === "OpenAI"
-                        ? "bg-accent/15 text-accent border-accent"
+                    onClick={() => handleApplyPreset("OpenAI ChatGPT")}
+                    className={`px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "OpenAI ChatGPT"
+                        ? "bg-accent/15 text-accent border-accent font-semibold"
                         : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
                     }`}
                   >
-                    OpenAI
+                    🤖 OpenAI ChatGPT
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleApplyPreset("OpenRouter")}
-                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
-                      formProvider === "OpenRouter"
-                        ? "bg-accent/15 text-accent border-accent"
+                    onClick={() => handleApplyPreset("Claude Code")}
+                    className={`px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "Claude Code"
+                        ? "bg-accent/15 text-accent border-accent font-semibold"
                         : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
                     }`}
                   >
-                    OpenRouter
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset("Ollama Local")}
-                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
-                      formProvider === "Ollama Local"
-                        ? "bg-accent/15 text-accent border-accent"
-                        : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
-                    }`}
-                  >
-                    Ollama Local
+                    ⚡ Claude Code
                   </button>
                 </div>
               </div>

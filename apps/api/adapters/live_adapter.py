@@ -384,6 +384,12 @@ class LiveLLMEngineAdapter(EngineAdapter):
         params = {}
         if "generativelanguage.googleapis.com" in url:
             params["key"] = key
+        elif "anthropic.com" in url:
+            headers = {
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            }
 
         try:
             resp = httpx.get(f"{url}/models", headers=headers, params=params if params else None, timeout=8.0)
@@ -441,17 +447,29 @@ class LiveLLMEngineAdapter(EngineAdapter):
 
         # Step 2: Validate specific selected model
         try:
-            chat_resp = httpx.post(
-                f"{url}/chat/completions",
-                headers=headers,
-                params=params if params else None,
-                json={
-                    "model": selected_model,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 1
-                },
-                timeout=7.0
-            )
+            if "anthropic.com" in url:
+                chat_resp = httpx.post(
+                    f"{url}/messages",
+                    headers=headers,
+                    json={
+                        "model": selected_model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1
+                    },
+                    timeout=7.0
+                )
+            else:
+                chat_resp = httpx.post(
+                    f"{url}/chat/completions",
+                    headers=headers,
+                    params=params if params else None,
+                    json={
+                        "model": selected_model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1
+                    },
+                    timeout=7.0
+                )
 
             if chat_resp.status_code == 200:
                 is_gemini = "gemini" in selected_model.lower() or "generativelanguage" in url
@@ -609,23 +627,46 @@ class LiveLLMEngineAdapter(EngineAdapter):
 
             self._add_log(db, run.id, "running", "INFO", f"Mengirim request ke {self.model} via {target_url}...")
 
-            with httpx.Client(timeout=60.0) as client:
-                res = client.post(
-                    f"{target_url}/chat/completions",
-                    headers=headers,
-                    params=query_params if query_params else None,
-                    json={
-                        "model": self.model,
-                        "messages": prompt_messages,
-                        "temperature": 0.2,
-                    }
-                )
-
-            if res.status_code != 200:
-                raise Exception(f"API Error ({res.status_code}): {res.text[:200]}")
-
-            llm_response = res.json()
-            content = llm_response["choices"][0]["message"]["content"].strip()
+            if "anthropic.com" in target_url:
+                headers = {
+                    "x-api-key": key or "",
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json"
+                }
+                system_content = prompt_messages[0]["content"] if prompt_messages and prompt_messages[0]["role"] == "system" else ""
+                user_content = prompt_messages[-1]["content"] if prompt_messages else ""
+                with httpx.Client(timeout=60.0) as client:
+                    res = client.post(
+                        f"{target_url}/messages",
+                        headers=headers,
+                        json={
+                            "model": self.model,
+                            "max_tokens": 4096,
+                            "system": system_content,
+                            "messages": [{"role": "user", "content": user_content}],
+                            "temperature": 0.2,
+                        }
+                    )
+                if res.status_code != 200:
+                    raise Exception(f"Anthropic API Error ({res.status_code}): {res.text[:200]}")
+                llm_response = res.json()
+                content = llm_response["content"][0]["text"].strip()
+            else:
+                with httpx.Client(timeout=60.0) as client:
+                    res = client.post(
+                        f"{target_url}/chat/completions",
+                        headers=headers,
+                        params=query_params if query_params else None,
+                        json={
+                            "model": self.model,
+                            "messages": prompt_messages,
+                            "temperature": 0.2,
+                        }
+                    )
+                if res.status_code != 200:
+                    raise Exception(f"API Error ({res.status_code}): {res.text[:200]}")
+                llm_response = res.json()
+                content = llm_response["choices"][0]["message"]["content"].strip()
 
             # Clean potential markdown wrapping
             if content.startswith("```json"):

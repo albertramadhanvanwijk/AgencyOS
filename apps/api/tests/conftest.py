@@ -19,7 +19,7 @@ def db_session(test_engine):
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=connection)
     session = TestingSessionLocal()
 
-    seed_database(session)
+    seed_database(session, seed_projects=True)
 
     yield session
 

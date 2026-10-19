@@ -17,6 +17,8 @@ from apps.api.services.analytics import analytics_service
 from apps.api.services.github_service import github_service
 from apps.api.services.pm_assistant import pm_assistant
 from apps.api.services.backlog_decomposition_service import BacklogDecompositionService
+from apps.api.schemas.release import ReleaseNotesOut, PublishReleaseIn
+from apps.api.services.release_service import ReleaseService
 
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
 
@@ -771,6 +773,32 @@ def request_work_item_revision(
         return pm_assistant.request_work_item_revision(work_item_id, payload.revision_notes, payload.requested_by, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{project_id}/release-notes", response_model=ReleaseNotesOut)
+def get_project_release_notes(
+    project_id: str,
+    version_tag: str = Query("v1.0.0", description="Target version tag"),
+    db: Session = Depends(get_db)
+):
+    """
+    Synthesizes release notes, DoD certification rollup, and delivery changelog.
+    """
+    return ReleaseService.generate_release_notes(project_id, db, version_tag=version_tag)
+
+
+@router.post("/{project_id}/publish-release")
+def publish_project_release(
+    project_id: str,
+    payload: Optional[PublishReleaseIn] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Publishes release notes into workspace repository, commits documentation, and records audit trail.
+    """
+    actual_payload = payload or PublishReleaseIn()
+    return ReleaseService.publish_release_notes(project_id, actual_payload, db)
+
 
 
 

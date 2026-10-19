@@ -47,17 +47,24 @@ interface Project {
 export default function OverviewPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [agentsCount, setAgentsCount] = useState<number>(4);
-  const [activeAgentsCount, setActiveAgentsCount] = useState<number>(2);
+  const [agentsCount, setAgentsCount] = useState<number>(0);
+  const [activeAgentsCount, setActiveAgentsCount] = useState<number>(0);
+  const [pendingApprovals, setPendingApprovals] = useState<number>(0);
+  const [activeAdapter, setActiveAdapter] = useState<{ name: string; isLive: boolean }>({
+    name: "MockEngineAdapter",
+    isLive: false,
+  });
   const [loading, setLoading] = useState(true);
 
   const fetchOverviewData = async () => {
     try {
       setLoading(true);
-      const [healthRes, projRes, agentsRes] = await Promise.all([
+      const [healthRes, projRes, agentsRes, approvalsRes, adaptersRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/v1/health"),
         fetch("http://127.0.0.1:8000/api/v1/projects"),
-        fetch("http://127.0.0.1:8000/api/v1/agents"),
+        fetch("http://127.0.0.1:8000/api/v1/workforce/agents"),
+        fetch("http://127.0.0.1:8000/api/v1/recruitment/requests"),
+        fetch("http://127.0.0.1:8000/api/v1/system/adapters"),
       ]);
 
       if (healthRes.ok) setHealth(await healthRes.json());
@@ -67,8 +74,25 @@ export default function OverviewPage() {
         setAgentsCount(agents.length);
         setActiveAgentsCount(agents.filter((a: any) => a.lifecycle_state === "active").length);
       }
+      if (approvalsRes.ok) {
+        const reqs = await approvalsRes.json();
+        const pending = reqs.filter(
+          (r: any) => r.status === "pending_approval" || r.status === "qualified"
+        ).length;
+        setPendingApprovals(pending);
+      }
+      if (adaptersRes.ok) {
+        const adapters = await adaptersRes.json();
+        const liveAdapter = adapters.find((a: any) => a.name === "LiveLLMEngineAdapter" && a.status === "verified");
+        const defaultAd = adapters.find((a: any) => a.is_default);
+        if (liveAdapter && (!defaultAd || !defaultAd.is_default)) {
+          setActiveAdapter({ name: "LiveLLMEngineAdapter", isLive: true });
+        } else if (defaultAd) {
+          setActiveAdapter({ name: defaultAd.name, isLive: !defaultAd.is_simulated });
+        }
+      }
     } catch {
-      // Keep defaults
+      // Fallback gracefully
     } finally {
       setLoading(false);
     }
@@ -122,11 +146,19 @@ export default function OverviewPage() {
             <FolderKanban className="w-4 h-4 text-accent" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-semibold tabular-nums">{projects.length || 2}</span>
-            <span className="text-xs text-status-success font-medium">Portfolio Ready</span>
+            <span className="text-2xl font-semibold tabular-nums">{projects.length}</span>
+            <span
+              className={`text-xs font-medium ${
+                projects.length > 0 ? "text-status-success" : "text-textMuted-light dark:text-textMuted-dark"
+              }`}
+            >
+              {projects.length > 0 ? "Portfolio Active" : "No Projects"}
+            </span>
           </div>
           <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-            {activeProjectsCount} in Sprint, {planningProjectsCount} in Planning
+            {projects.length > 0
+              ? `${activeProjectsCount} in Sprint, ${planningProjectsCount} in Planning`
+              : "Create a project to begin delivery"}
           </p>
         </div>
 
@@ -140,21 +172,33 @@ export default function OverviewPage() {
             <span className="text-2xl font-semibold tabular-nums">{agentsCount}</span>
             <span className="text-xs text-textMuted-light dark:text-textMuted-dark">Identities</span>
           </div>
-          <CapacityIndicator current={activeAgentsCount} max={agentsCount} label="Agency Concurrency" />
+          <CapacityIndicator current={activeAgentsCount} max={agentsCount || 1} label="Agency Concurrency" />
         </div>
 
         {/* Metric 3 */}
         <div className="p-4 rounded-md border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-2">
           <div className="flex items-center justify-between text-xs text-textMuted-light dark:text-textMuted-dark">
             <span className="font-medium">Pending Approvals</span>
-            <ShieldCheck className="w-4 h-4 text-status-warning" />
+            <ShieldCheck
+              className={`w-4 h-4 ${
+                pendingApprovals > 0 ? "text-status-warning" : "text-status-success"
+              }`}
+            />
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-2xl font-semibold tabular-nums">1</span>
-            <span className="text-xs text-status-warning font-medium">Awaiting Action</span>
+            <span className="text-2xl font-semibold tabular-nums">{pendingApprovals}</span>
+            <span
+              className={`text-xs font-medium ${
+                pendingApprovals > 0 ? "text-status-warning" : "text-status-success"
+              }`}
+            >
+              {pendingApprovals > 0 ? "Awaiting Action" : "All Clear"}
+            </span>
           </div>
           <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-            Requires human policy sign-off
+            {pendingApprovals > 0
+              ? "Requires human policy sign-off"
+              : "Zero items awaiting sign-off"}
           </p>
         </div>
 
@@ -165,10 +209,15 @@ export default function OverviewPage() {
             <Cpu className="w-4 h-4 text-accent" />
           </div>
           <div className="flex items-baseline space-x-2">
-            <StatusBadge variant="simulated" label="MockEngineAdapter" />
+            <StatusBadge
+              variant={activeAdapter.isLive ? "success" : "simulated"}
+              label={activeAdapter.name}
+            />
           </div>
           <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-            Deterministic sandbox simulation
+            {activeAdapter.isLive
+              ? "Live LLM execution enabled"
+              : "Deterministic sandbox simulation"}
           </p>
         </div>
       </div>
@@ -203,8 +252,11 @@ export default function OverviewPage() {
             <tbody className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
               {projects.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-textMuted-light dark:text-textMuted-dark">
-                    No active projects found.
+                  <td colSpan={7} className="py-8 text-center text-textMuted-light dark:text-textMuted-dark">
+                    <p className="font-medium text-xs">No active projects found.</p>
+                    <p className="text-[11px] mt-1 text-textMuted-light/70 dark:text-textMuted-dark/70">
+                      Create your first project from the Projects directory to start sprint delivery.
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -229,7 +281,7 @@ export default function OverviewPage() {
                           </span>
                         ) : (
                           <span>
-                            {proj.active_sprint_name || "Sprint 1"} ({completionPercent}%)
+                            {proj.active_sprint_name || "No Sprint"} ({completionPercent}%)
                           </span>
                         )}
                       </td>
@@ -243,7 +295,7 @@ export default function OverviewPage() {
                         />
                       </td>
                       <td className="py-3 px-4 font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                        {isPlanning ? "1 Agent assigned (Rian Nugraha)" : "2 Agents active"}
+                        {proj.total_items > 0 ? `${proj.total_items} items committed` : "No items yet"}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <Link href={`/projects/${proj.id}/board`}>

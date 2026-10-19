@@ -28,6 +28,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
+        storage_path: Optional[Path] = None,
     ):
         self._api_key = (
             api_key
@@ -41,7 +42,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
         self._discovered_models: list[str] = []
 
         # Persistent storage path for LLM configuration profiles
-        self._storage_path = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "llm_configs.json"
+        self._storage_path = storage_path or (Path(__file__).resolve().parent.parent.parent.parent / "storage" / "llm_configs.json")
 
         # Multi-provider LLM Configuration Profiles
         self._llm_configs: dict[str, dict[str, Any]] = {}

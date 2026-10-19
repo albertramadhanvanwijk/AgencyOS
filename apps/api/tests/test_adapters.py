@@ -33,9 +33,10 @@ def test_live_adapter_capabilities():
     assert "gemini-2.5-pro" in caps["supported_models"]
     assert len(caps["supported_models"]) > 0
 
-def test_gemini_api_key_resolution(monkeypatch):
+def test_gemini_api_key_resolution(monkeypatch, tmp_path):
     monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyTestGeminiKey123")
-    live = LiveLLMEngineAdapter()
+    test_storage = tmp_path / "llm_configs.json"
+    live = LiveLLMEngineAdapter(storage_path=test_storage)
     assert live.api_key == "AIzaSyTestGeminiKey123"
     assert "generativelanguage" in live.base_url
     assert "gemini" in live.model

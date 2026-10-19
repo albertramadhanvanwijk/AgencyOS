@@ -564,35 +564,35 @@ def seed_database(db: Session, seed_projects: bool | None = None):
             db.add_all([qc2_1, qc2_2, qc2_3, qc2_4])
             db.commit()
 
-    # Seed sample RecruitmentRequest if not exists
-    if not db.query(RecruitmentRequest).filter(RecruitmentRequest.id == "req-rec-001").first():
-        req_sample = RecruitmentRequest(
-            id="req-rec-001",
-            role_id="role-qa",
-            department_id="dept-qa",
-            proposed_agent_name="Fajar Hidayat",
-            rationale="Sustained demand for automated security sandbox qualification and threat penetration testing on PRJ-CORE and PRJ-EVAL.",
-            requested_by="Technical Lead / Dewi Lestari",
-            required_skills=["Security & Threat Modeling", "Sandbox Containment", "Automated QA"],
-            status="pending_approval",
-            policy_basis="POL-AGENT-RECRUITMENT-V1"
-        )
-        db.add(req_sample)
-        db.flush()
+        # Seed sample RecruitmentRequest if not exists
+        if not db.query(RecruitmentRequest).filter(RecruitmentRequest.id == "req-rec-001").first():
+            req_sample = RecruitmentRequest(
+                id="req-rec-001",
+                role_id="role-qa",
+                department_id="dept-qa",
+                proposed_agent_name="Fajar Hidayat",
+                rationale="Sustained demand for automated security sandbox qualification and threat penetration testing on PRJ-CORE and PRJ-EVAL.",
+                requested_by="Technical Lead / Dewi Lestari",
+                required_skills=["Security & Threat Modeling", "Sandbox Containment", "Automated QA"],
+                status="pending_approval",
+                policy_basis="POL-AGENT-RECRUITMENT-V1"
+            )
+            db.add(req_sample)
+            db.flush()
 
-        db.add(AuditEvent(
-            actor="Technical Lead / Scribe",
-            action="RECRUITMENT_REQUEST_CREATED",
-            target_type="RECRUITMENT_REQUEST",
-            target_id=req_sample.id,
-            policy_basis="POL-AGENT-RECRUITMENT-V1",
-            details={
-                "proposed_agent_name": req_sample.proposed_agent_name,
-                "role_id": req_sample.role_id,
-                "skills": req_sample.required_skills
-            }
-        ))
-        db.commit()
+            db.add(AuditEvent(
+                actor="Technical Lead / Scribe",
+                action="RECRUITMENT_REQUEST_CREATED",
+                target_type="RECRUITMENT_REQUEST",
+                target_id=req_sample.id,
+                policy_basis="POL-AGENT-RECRUITMENT-V1",
+                details={
+                    "proposed_agent_name": req_sample.proposed_agent_name,
+                    "role_id": req_sample.role_id,
+                    "skills": req_sample.required_skills
+                }
+            ))
+            db.commit()
 
 def init_db():
     Base.metadata.create_all(bind=engine)

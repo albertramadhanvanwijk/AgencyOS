@@ -440,6 +440,24 @@ def seed_enterprise_agency(db: Session):
             "skills": ["Design Tokens & Systems", "WCAG 2.1 Accessibility", "Tailwind UI Components", "UX Wireframing"]
         },
         {
+            "id": "agent-maya",
+            "name": "Maya Indrawati (Empath)",
+            "title": "Lead UX Researcher & Flow Analyst",
+            "role_id": "role-uxr",
+            "department_id": "dept-prod",
+            "instructions": "Bertindak sebagai Lead UX Researcher & Empathy Analyst. Kolaborasi erat dengan Lead UI/UX Designer (Pixel) dan Lead PM (Atlas). Petakan persona pengguna, susun User Journey Maps, Information Architecture, dan analisis kebutuhan empatik sebelum antarmuka visual dirancang.",
+            "skills": ["User Personas & Empathy Mapping", "Information Architecture", "UX Flow Analysis", "Usability Heuristics", "Journey Mapping"]
+        },
+        {
+            "id": "agent-satria",
+            "name": "Satria Pratama (Analyst)",
+            "title": "Senior Business Analyst",
+            "role_id": "role-ba",
+            "department_id": "dept-prod",
+            "instructions": "Bertindak sebagai Senior Business Analyst. Menganalisis proses bisnis, memetakan aturan data bisnis (Business Rules), use case scenarios, dan memvalidasi kebutuhan domain bisnis bersama PM dan UX Researcher.",
+            "skills": ["Business Process Modeling", "Business Logic & Rules", "Use Case Scenarios", "Domain & ROI Analysis"]
+        },
+        {
             "id": "agent-forge",
             "name": "Reza Mahendra (Forge)",
             "title": "Integration & 3rd-Party Specialist",

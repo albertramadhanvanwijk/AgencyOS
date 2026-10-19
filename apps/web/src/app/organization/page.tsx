@@ -30,7 +30,10 @@ import {
   Code2,
   Palette,
   Terminal,
+  Dices,
+  UserPlus,
 } from "lucide-react";
+import { generateIndonesianName } from "../../utils/nameGenerator";
 
 interface Department {
   id: string;
@@ -116,7 +119,7 @@ export default function OrganizationPage() {
   const [selectedDivisionFilter, setSelectedDivisionFilter] = useState<string>("all");
   const [searchAgentQuery, setSearchAgentQuery] = useState<string>("");
 
-  // Propose Role Modal
+  // Propose Role Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -127,6 +130,15 @@ export default function OrganizationPage() {
   const [roleSkills, setRoleSkills] = useState("");
   const [roleResp, setRoleResp] = useState("");
 
+  // On-Demand Recruitment Modal State (for vacant roles)
+  const [recruitingRole, setRecruitingRole] = useState<JobRole | null>(null);
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateTitle, setCandidateTitle] = useState("");
+  const [candidateInstructions, setCandidateInstructions] = useState("");
+  const [candidateSkills, setCandidateSkills] = useState("");
+  const [recruitingLoading, setRecruitingLoading] = useState(false);
+  const [recruitingError, setRecruitingError] = useState<string | null>(null);
+
   const directorates: DirectorateConfig[] = useMemo(
     () => [
       {
@@ -136,7 +148,7 @@ export default function OrganizationPage() {
         deptCodes: ["PROD", "DESIGN"],
         deptIds: ["dept-prod", "dept-des"],
         description:
-          "Bertanggung jawab atas riset kebutuhan bisnis, penyusunan dokumen PRD/SRS formal, user journey mapping, dan arsitektur token UI/UX WCAG 2.1.",
+          "Bertanggung jawab atas riset kebutuhan bisnis, penyusunan dokumen PRD/SRS formal, pemetaan empati pengguna (UX Researcher), dan sistem desain token UI/UX WCAG 2.1.",
         badgeBg: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30",
         borderTheme: "border-blue-500/30",
         icon: <Palette className="w-5 h-5 text-blue-500" />,
@@ -225,6 +237,74 @@ export default function OrganizationPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Open Recruit Modal for a specific vacant role
+  const handleOpenRecruitModal = (role: JobRole) => {
+    const randomName = generateIndonesianName();
+    const callSign = role.code.replace(/_/g, " ").toLowerCase();
+    setRecruitingRole(role);
+    setCandidateName(`${randomName} (${role.name.split(" ")[0]})`);
+    setCandidateTitle(role.name);
+    setCandidateInstructions(
+      `Bertindak sebagai ${role.name}. ${role.description || ""} Patuhi pedoman domain boundaries dan standar SDLC AgencyOS.`
+    );
+    setCandidateSkills((role.skills || []).join(", "));
+    setRecruitingError(null);
+  };
+
+  const handleRandomizeName = () => {
+    if (!recruitingRole) return;
+    const randomName = generateIndonesianName();
+    setCandidateName(`${randomName} (${recruitingRole.name.split(" ")[0]})`);
+  };
+
+  const handleExecuteRecruitment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!recruitingRole || !candidateName.trim()) return;
+
+    try {
+      setRecruitingLoading(true);
+      setRecruitingError(null);
+
+      const skillsList = candidateSkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      const payload = {
+        name: candidateName.trim(),
+        title: candidateTitle.trim() || recruitingRole.name,
+        role_id: recruitingRole.id,
+        department_id: recruitingRole.department_id,
+        lifecycle_state: "active",
+        availability_state: "available",
+        qualification_state: "passed",
+        max_concurrency: 2,
+        engine_adapter: "mock",
+        instructions: candidateInstructions.trim() || recruitingRole.description,
+        initial_skills: skillsList,
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/api/v1/workforce/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || "Gagal merekrut agen spesialis.");
+      }
+
+      setSyncSuccess(`Agen ${candidateName} berhasil direkrut dan resmi bertugas untuk jabatan ${recruitingRole.name}!`);
+      setRecruitingRole(null);
+      await fetchData();
+    } catch (err: unknown) {
+      setRecruitingError(err instanceof Error ? err.message : "Terjadi kesalahan saat merekrut agen.");
+    } finally {
+      setRecruitingLoading(false);
+    }
+  };
 
   const handleProposeRole = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,7 +411,7 @@ export default function OrganizationPage() {
     <AppShell>
       <PageHeader
         title="Struktur Organisasi & Personel per Divisi"
-        description="Peta hierarki divisi digital agency, rincian personel agen AI yang bertugas di tiap direktorat, serta spesifikasi peran terstandar."
+        description="Peta hierarki divisi digital agency, rincian personel agen AI yang bertugas di tiap direktorat, serta opsi rekrutmen on-demand untuk jabatan lowong."
         breadcrumbs={[
           { label: "Overview", href: "/" },
           { label: "Organization" },
@@ -635,56 +715,83 @@ export default function OrganizationPage() {
                           <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
                           <span>Katalog Jabatan di Divisi Ini ({dirRoles.length})</span>
                         </span>
+                        <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                          Jabatan lowong dapat direkrut sesuai kebutuhan proyek
+                        </span>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
                         {dirRoles.map((r) => {
                           const assigned = agents.filter(
                             (a) => a.role_id === r.id || (a.role_name && a.role_name.toLowerCase().includes(r.code.toLowerCase()))
                           );
 
+                          const isVacant = assigned.length === 0;
+
                           return (
                             <div
                               key={r.id}
-                              className="p-2.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-1.5"
+                              className={`p-3 rounded-xl border transition-all space-y-2 flex flex-col justify-between ${
+                                isVacant
+                                  ? "border-dashed border-borderBase-light/80 dark:border-borderBase-dark/80 bg-surfaceSecondary-light/20 dark:bg-surfaceSecondary-dark/20"
+                                  : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark shadow-xs"
+                              }`}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10">
-                                  {r.code}
-                                </span>
-                                <span
-                                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold ${
-                                    assigned.length > 0
-                                      ? "bg-status-success/15 text-status-success"
-                                      : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
-                                  }`}
-                                >
-                                  {assigned.length > 0 ? `${assigned.length} Agen` : "Lowong"}
-                                </span>
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10">
+                                    {r.code}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold ${
+                                      !isVacant
+                                        ? "bg-status-success/15 text-status-success"
+                                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                    }`}
+                                  >
+                                    {!isVacant ? `${assigned.length} Agen` : "Lowong"}
+                                  </span>
+                                </div>
+
+                                <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
+                                  {r.name}
+                                </div>
+
+                                <div className="text-[10px] text-textMuted-light dark:text-textMuted-dark line-clamp-2">
+                                  {r.description || "Spesifikasi tugas SDLC terstandarisasi."}
+                                </div>
                               </div>
 
-                              <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
-                                {r.name}
-                              </div>
-
-                              {assigned.length > 0 ? (
-                                <div className="flex items-center space-x-1 pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                              {!isVacant ? (
+                                <div className="pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 flex items-center justify-between">
                                   <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
                                     Diisi:
                                   </span>
-                                  {assigned.slice(0, 2).map((ag) => (
-                                    <button
-                                      key={ag.id}
-                                      onClick={() => setSelectedAgent(ag)}
-                                      className="text-[10px] font-semibold text-accent hover:underline truncate max-w-[120px]"
-                                    >
-                                      {ag.name}
-                                    </button>
-                                  ))}
+                                  <div className="flex items-center space-x-1 truncate max-w-[140px]">
+                                    {assigned.map((ag) => (
+                                      <button
+                                        key={ag.id}
+                                        onClick={() => setSelectedAgent(ag)}
+                                        className="text-[10px] font-semibold text-accent hover:underline truncate"
+                                        title={`Klik untuk lihat profil ${ag.name}`}
+                                      >
+                                        {ag.name}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="text-[10px] text-textMuted-light dark:text-textMuted-dark italic pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
-                                  Belum ada agen terdaftar
+                                <div className="pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 flex items-center justify-between">
+                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark italic">
+                                    Belum ada agen
+                                  </span>
+                                  <button
+                                    onClick={() => handleOpenRecruitModal(r)}
+                                    className="px-2 py-1 rounded text-[10px] font-semibold bg-accent text-white hover:bg-accent/90 transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
+                                  >
+                                    <UserPlus className="w-3 h-3" />
+                                    <span>+ Rekrut Agen</span>
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -848,7 +955,116 @@ export default function OrganizationPage() {
         </div>
       )}
 
-      {/* Propose Role Modal */}
+      {/* 5. ON-DEMAND RECRUITMENT MODAL (FOR VACANT ROLES) */}
+      {recruitingRole && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-accent text-white flex items-center justify-center shadow-xs">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-textPrimary-light dark:text-textPrimary-dark">
+                    Rekrut Agen Spesialis
+                  </h3>
+                  <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                    Mengisi jabatan lowong: <strong className="text-accent">{recruitingRole.name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setRecruitingRole(null)}>
+                <X className="w-5 h-5 text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark" />
+              </button>
+            </div>
+
+            {recruitingError && (
+              <div className="p-3 rounded-lg bg-status-danger/10 border border-status-danger/20 text-status-danger text-xs">
+                {recruitingError}
+              </div>
+            )}
+
+            <form onSubmit={handleExecuteRecruitment} className="space-y-3.5 text-xs">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Nama Persona Agen (Identitas Indonesia) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRandomizeName}
+                    className="text-[11px] text-accent hover:underline flex items-center space-x-1"
+                  >
+                    <Dices className="w-3 h-3" />
+                    <span>Acak Nama</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={candidateName}
+                  onChange={(e) => setCandidateName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark focus:ring-1 focus:ring-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-textPrimary-light dark:text-textPrimary-dark mb-1">
+                  Judul Jabatan / Spesialisasi
+                </label>
+                <input
+                  type="text"
+                  value={candidateTitle}
+                  onChange={(e) => setCandidateTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark focus:ring-1 focus:ring-accent"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-textPrimary-light dark:text-textPrimary-dark mb-1">
+                  Mandat Peran & Panduan Instruksi Sistem (System Prompt)
+                </label>
+                <textarea
+                  rows={3}
+                  value={candidateInstructions}
+                  onChange={(e) => setCandidateInstructions(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark focus:ring-1 focus:ring-accent resize-none text-[11px] font-mono leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-textPrimary-light dark:text-textPrimary-dark mb-1">
+                  Keahlian Utama (Pisahkan dengan koma)
+                </label>
+                <input
+                  type="text"
+                  value={candidateSkills}
+                  onChange={(e) => setCandidateSkills(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark focus:ring-1 focus:ring-accent"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-accent/5 border border-accent/20 flex items-start space-x-2 text-[11px] text-textSecondary-light dark:text-textSecondary-dark">
+                <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                <span>
+                  Agen akan langsung diaktifkan dengan status <strong>Active</strong> dan dapat segera dialokasikan pada task sprint di proyek yang relevan.
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-end space-x-2">
+                <Button variant="outline" size="sm" onClick={() => setRecruitingRole(null)}>
+                  Batal
+                </Button>
+                <Button type="submit" size="sm" isLoading={recruitingLoading}>
+                  Aktifkan Agen Sekarang
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 6. PROPOSE ROLE MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl">

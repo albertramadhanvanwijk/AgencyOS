@@ -231,8 +231,6 @@ export default function ScrumBoardPage({
 
   // Inspect Modal
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
-  const [newCriterionInput, setNewCriterionInput] = useState("");
-  const [addingCriterion, setAddingCriterion] = useState(false);
 
   // Edit Task State
   const [isEditingItem, setIsEditingItem] = useState(false);
@@ -334,32 +332,6 @@ export default function ScrumBoardPage({
     fetchBoardData();
   }, [fetchBoardData]);
 
-  const handleAddCriterion = async () => {
-    if (!selectedItem || !newCriterionInput.trim()) return;
-    try {
-      setAddingCriterion(true);
-      const updatedList = [...(selectedItem.acceptance_criteria || []), newCriterionInput.trim()];
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${selectedItem.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acceptance_criteria: updatedList }),
-      });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || "Gagal menambahkan kriteria");
-      }
-      const updatedItem = await res.json();
-      setSelectedItem(updatedItem);
-      setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
-      setNewCriterionInput("");
-      setTransitionError(null);
-    } catch (err: unknown) {
-      if (err instanceof Error) setTransitionError(err.message);
-    } finally {
-      setAddingCriterion(false);
-    }
-  };
-
   const startEditing = () => {
     if (!selectedItem) return;
     setEditTitle(selectedItem.title);
@@ -390,6 +362,19 @@ export default function ScrumBoardPage({
       return;
     }
 
+    // Merge any pending drafts in inputs into criteria/DoD
+    const mergedCriteria = [...editCriteria];
+    if (newCriterionDraft.trim() && !mergedCriteria.includes(newCriterionDraft.trim())) {
+      mergedCriteria.push(newCriterionDraft.trim());
+    }
+    const cleanCriteria = mergedCriteria.filter((c) => c.trim().length > 0);
+
+    const mergedDod = [...editDod];
+    if (newDodDraft.trim() && !mergedDod.includes(newDodDraft.trim())) {
+      mergedDod.push(newDodDraft.trim());
+    }
+    const cleanDod = mergedDod.filter((d) => d.trim().length > 0);
+
     // If item is in_progress and no strategy chosen yet, prompt confirmation dialog
     if (selectedItem.status === "in_progress" && !strategy) {
       setShowInProgressStrategyModal(true);
@@ -411,8 +396,8 @@ export default function ScrumBoardPage({
         estimate_points: safePoints,
         assignee_agent_id: editAssigneeId && editAssigneeId.trim() ? editAssigneeId.trim() : undefined,
         sprint_id: editSprintId === "none" ? undefined : (editSprintId || undefined),
-        acceptance_criteria: editCriteria.filter((c) => c.trim().length > 0),
-        definition_of_done: editDod.filter((d) => d.trim().length > 0),
+        acceptance_criteria: cleanCriteria,
+        definition_of_done: cleanDod,
       };
 
       const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${selectedItem.id}`, {
@@ -441,6 +426,8 @@ export default function ScrumBoardPage({
       setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
       setIsEditingItem(false);
       setShowInProgressStrategyModal(false);
+      setNewCriterionDraft("");
+      setNewDodDraft("");
 
       if (strategy === "reset") {
         await handleTriggerRun(updatedItem.id);
@@ -450,6 +437,7 @@ export default function ScrumBoardPage({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Gagal menyimpan perubahan.";
       setEditError(msg);
+      setShowInProgressStrategyModal(false);
     } finally {
       setEditSubmitting(false);
     }
@@ -1497,10 +1485,10 @@ export default function ScrumBoardPage({
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                  <div className="pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
                     <input
                       type="text"
-                      placeholder="Tambah kriteria pengujian baru..."
+                      placeholder="+ Ketik kriteria baru lalu tekan Enter untuk menambahkan..."
                       value={newCriterionDraft}
                       onChange={(e) => setNewCriterionDraft(e.target.value)}
                       onKeyDown={(e) => {
@@ -1510,22 +1498,14 @@ export default function ScrumBoardPage({
                           setNewCriterionDraft("");
                         }
                       }}
-                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!newCriterionDraft.trim()}
-                      onClick={() => {
+                      onBlur={() => {
                         if (newCriterionDraft.trim()) {
                           setEditCriteria([...editCriteria, newCriterionDraft.trim()]);
                           setNewCriterionDraft("");
                         }
                       }}
-                      leftIcon={<Plus className="w-3 h-3" />}
-                    >
-                      Tambah
-                    </Button>
+                      className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-textMuted-light/60 dark:placeholder:text-textMuted-dark/60"
+                    />
                   </div>
                 </div>
 
@@ -1560,10 +1540,10 @@ export default function ScrumBoardPage({
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                  <div className="pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
                     <input
                       type="text"
-                      placeholder="Tambah item Definition of Done baru..."
+                      placeholder="+ Ketik item Definition of Done lalu tekan Enter..."
                       value={newDodDraft}
                       onChange={(e) => setNewDodDraft(e.target.value)}
                       onKeyDown={(e) => {
@@ -1573,22 +1553,14 @@ export default function ScrumBoardPage({
                           setNewDodDraft("");
                         }
                       }}
-                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!newDodDraft.trim()}
-                      onClick={() => {
+                      onBlur={() => {
                         if (newDodDraft.trim()) {
                           setEditDod([...editDod, newDodDraft.trim()]);
                           setNewDodDraft("");
                         }
                       }}
-                      leftIcon={<Plus className="w-3 h-3" />}
-                    >
-                      Tambah
-                    </Button>
+                      className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-textMuted-light/60 dark:placeholder:text-textMuted-dark/60"
+                    />
                   </div>
                 </div>
               </div>
@@ -1627,38 +1599,20 @@ export default function ScrumBoardPage({
                       ))}
                     </ul>
                   ) : (
-                    <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px] flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Belum ada acceptance criteria. Tambahkan minimal 1 kriteria di bawah agar dapat dipindahkan ke Ready.</span>
+                    <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>Belum ada kriteria pengujian (wajib minimal 1 kriteria untuk pindah ke Ready).</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={startEditing}
+                        className="text-xs font-semibold underline hover:opacity-80 shrink-0"
+                      >
+                        Edit Task
+                      </button>
                     </div>
                   )}
-
-                  {/* Quick Add Criterion Inline */}
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
-                    <input
-                      type="text"
-                      placeholder="Tambah kriteria pengujian (misal: Unit test lulus, API return 200)..."
-                      value={newCriterionInput}
-                      onChange={(e) => setNewCriterionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddCriterion();
-                        }
-                      }}
-                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleAddCriterion}
-                      isLoading={addingCriterion}
-                      disabled={!newCriterionInput.trim()}
-                      leftIcon={<Plus className="w-3 h-3" />}
-                    >
-                      Tambah
-                    </Button>
-                  </div>
                 </div>
 
                 {/* Definition of Done Card */}
@@ -2005,35 +1959,55 @@ export default function ScrumBoardPage({
 
       {/* In-Progress Strategy Confirmation Modal */}
       {showInProgressStrategyModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-in fade-in">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editSubmitting) {
+              setShowInProgressStrategyModal(false);
+            }
+          }}
+        >
+          <div
+            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-start gap-3">
               <div className="p-2.5 rounded-full bg-accent/10 text-accent shrink-0">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <div>
-                <h4 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-                  Task Sedang Dikerjakan (In Progress)
-                </h4>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Task Sedang Dikerjakan (In Progress)
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowInProgressStrategyModal(false)}
+                    disabled={editSubmitting}
+                    className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
                 <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-1 leading-relaxed">
-                  Perubahan spesifikasi terdeteksi pada task yang sedang aktif. Pilih bagaimana agen harus menangani draf kodenya:
+                  Perubahan detail terdeteksi pada task yang sedang aktif dikerjakan agen. Pilih bagaimana agen harus menangani draf kodenya:
                 </p>
               </div>
             </div>
 
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => handleSaveItemEdit("preserve")}
                 disabled={editSubmitting}
-                className="w-full text-left p-3 rounded-lg border border-accent/40 bg-accent/5 dark:bg-accent/10 hover:border-accent hover:bg-accent/15 transition-all text-xs space-y-1 group"
+                className="w-full text-left p-3.5 rounded-lg border-2 border-accent/40 bg-accent/5 dark:bg-accent/10 hover:border-accent hover:bg-accent/15 transition-all text-xs space-y-1 group cursor-pointer"
               >
                 <div className="font-semibold text-accent flex items-center justify-between">
                   <span>1. Simpan & Sesuaikan Draf (Hemat Token ⭐)</span>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent text-white font-normal">Rekomendasi</span>
                 </div>
                 <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-snug">
-                  Memperbarui kriteria baru dan mempertahankan draf kode yang sudah dibuat agen agar proses revisi berjalan efisien tanpa mulai dari nol.
+                  Memperbarui kriteria baru dan mempertahankan draf kode yang sudah dibuat agen di branch agar proses revisi berjalan efisien tanpa mulai dari nol.
                 </p>
               </button>
 
@@ -2041,7 +2015,7 @@ export default function ScrumBoardPage({
                 type="button"
                 onClick={() => handleSaveItemEdit("reset")}
                 disabled={editSubmitting}
-                className="w-full text-left p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/30 hover:border-borderBase-light hover:bg-surfaceSecondary-light/70 transition-all text-xs space-y-1"
+                className="w-full text-left p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/30 hover:border-status-warning hover:bg-surfaceSecondary-light/70 transition-all text-xs space-y-1 cursor-pointer"
               >
                 <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5">
                   <RotateCcw className="w-3.5 h-3.5 text-status-warning" />
@@ -2060,7 +2034,7 @@ export default function ScrumBoardPage({
                 onClick={() => setShowInProgressStrategyModal(false)}
                 disabled={editSubmitting}
               >
-                Kembali
+                Batal / Kembali ke Edit
               </Button>
             </div>
           </div>

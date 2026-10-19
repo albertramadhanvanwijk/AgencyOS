@@ -116,6 +116,17 @@ interface AgentRecommendation {
   is_recommended: boolean;
 }
 
+interface SDLCGates {
+  project_id: string;
+  project_name: string;
+  prd_status: string;
+  prd_approved: boolean;
+  architecture_status: string;
+  architecture_approved: boolean;
+  can_decompose: boolean;
+  gate_message: string;
+}
+
 export default function BacklogPlanningPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const projectId = resolvedParams.id;
@@ -123,7 +134,10 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
   const [project, setProject] = useState<Project | null>(null);
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [items, setItems] = useState<WorkItem[]>([]);
+  const [gates, setGates] = useState<SDLCGates | null>(null);
   const [loading, setLoading] = useState(true);
+  const [decomposing, setDecomposing] = useState(false);
+  const [decomposeSuccess, setDecomposeSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -164,10 +178,11 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
     try {
       setLoading(true);
       setError(null);
-      const [projRes, sprintsRes, itemsRes] = await Promise.all([
+      const [projRes, sprintsRes, itemsRes, gatesRes] = await Promise.all([
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}`),
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints`),
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/work-items`),
+        fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/backlog/gates`),
       ]);
 
       if (!projRes.ok || !sprintsRes.ok || !itemsRes.ok) {
@@ -181,6 +196,10 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
       setProject(projData);
       setSprints(sprintsData);
       setItems(itemsData);
+
+      if (gatesRes.ok) {
+        setGates(await gatesRes.json());
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -191,6 +210,32 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
       setLoading(false);
     }
   }, [projectId]);
+
+  const handleDecomposeFromSpecs = async (force: boolean = false) => {
+    try {
+      setDecomposing(true);
+      setActionError(null);
+      setDecomposeSuccess(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/backlog/decompose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force_override_gate: force }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal memecah Backlog & Sprints dari spesifikasi.");
+      }
+      const data = await res.json();
+      setDecomposeSuccess(data.message);
+      await fetchData();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setActionError(err.message);
+      }
+    } finally {
+      setDecomposing(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -469,17 +514,15 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
             >
               Refresh
             </Button>
-            {productBacklogItems.length > 0 && !activeSprint && !sprints.some((s) => s.status === "pending_approval") && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleHandoverNextSprint}
-                isLoading={handoverLoading}
-                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-              >
-                Handover ke Dewi: Paketkan Sprint Baru
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleDecomposeFromSpecs(false)}
+              isLoading={decomposing}
+              leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+            >
+              Decompose dari Spesifikasi
+            </Button>
             <Button
               size="sm"
               onClick={() => {
@@ -532,6 +575,90 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
           <span>5. Analitik & Retro</span>
         </Link>
       </div>
+
+      {/* SDLC Gate Compliance Banner */}
+      {gates && (
+        <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+          gates.can_decompose
+            ? "bg-status-success/5 border-status-success/30 text-textPrimary-light dark:text-textPrimary-dark"
+            : "bg-status-warning/5 border-status-warning/30 text-textPrimary-light dark:text-textPrimary-dark"
+        }`}>
+          <div className="flex items-center space-x-3">
+            <div className={`p-2 rounded-lg ${gates.can_decompose ? "bg-status-success/15 text-status-success" : "bg-status-warning/15 text-status-warning"}`}>
+              {gates.can_decompose ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-textPrimary-light dark:text-textPrimary-dark">
+                  Kepatuhan Gerbang Kualitas SDLC (Quality Gate)
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                  gates.can_decompose ? "bg-status-success/20 text-status-success" : "bg-status-warning/20 text-status-warning"
+                }`}>
+                  {gates.can_decompose ? "GERBANG DIBUKA" : "TERKUNCI"}
+                </span>
+              </div>
+              <div className="flex items-center space-x-3 mt-1 text-xs text-textMuted-light dark:text-textMuted-dark">
+                <span className="flex items-center space-x-1">
+                  <span>Tahap 1 (PRD):</span>
+                  <Link href={`/projects/${projectId}/prd`} className={`font-semibold underline ${gates.prd_approved ? "text-status-success" : "text-status-warning"}`}>
+                    {gates.prd_approved ? "Approved" : "Belum Approved"}
+                  </Link>
+                </span>
+                <span>•</span>
+                <span className="flex items-center space-x-1">
+                  <span>Tahap 2 (Arsitektur):</span>
+                  <Link href={`/projects/${projectId}/architecture`} className={`font-semibold underline ${gates.architecture_approved ? "text-status-success" : "text-status-warning"}`}>
+                    {gates.architecture_approved ? "Approved" : "Belum Approved"}
+                  </Link>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            {gates.can_decompose ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleDecomposeFromSpecs(false)}
+                isLoading={decomposing}
+                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+              >
+                AI Decompose Backlog (Dewi)
+              </Button>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <Link href={!gates.prd_approved ? `/projects/${projectId}/prd` : `/projects/${projectId}/architecture`}>
+                  <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                    Lengkapi & Setujui Spesifikasi
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDecomposeFromSpecs(true)}
+                  isLoading={decomposing}
+                  className="text-textMuted-light dark:text-textMuted-dark text-xs"
+                >
+                  Bypass Gate
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Success notification */}
+      {decomposeSuccess && (
+        <div className="p-3.5 rounded-lg bg-status-success/10 border border-status-success/30 text-xs text-status-success flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Check className="w-4 h-4" />
+            <span>{decomposeSuccess}</span>
+          </div>
+          <button onClick={() => setDecomposeSuccess(null)} className="font-semibold underline ml-2">Tutup</button>
+        </div>
+      )}
 
       {/* Error alert banner */}
       {actionError && (

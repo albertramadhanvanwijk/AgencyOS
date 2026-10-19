@@ -16,6 +16,7 @@ from apps.api.services.analytics import analytics_service
 
 from apps.api.services.github_service import github_service
 from apps.api.services.pm_assistant import pm_assistant
+from apps.api.services.backlog_decomposition_service import BacklogDecompositionService
 
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
 
@@ -642,6 +643,34 @@ class SprintCompleteReviewIn(BaseModel):
 class WorkItemRevisionIn(BaseModel):
     revision_notes: str
     requested_by: Optional[str] = "Project Owner"
+
+class BacklogDecomposeIn(BaseModel):
+    force_override_gate: bool = False
+
+
+@router.get("/{project_id}/backlog/gates")
+def check_backlog_gates(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Memeriksa kepatuhan Gerbang Kualitas SDLC (PRD & Arsitektur) sebelum dekomposisi Backlog.
+    """
+    return BacklogDecompositionService.check_gates(project_id, db)
+
+
+@router.post("/{project_id}/backlog/decompose")
+def decompose_project_backlog(
+    project_id: str,
+    payload: Optional[BacklogDecomposeIn] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Memicu Agile Delivery Lead (Dewi Lestari) untuk memecah spesifikasi PRD & Arsitektur
+    yang telah di-approve menjadi Epics, User Stories (DoD), dan 3 paket Sprint bertahap.
+    """
+    force = payload.force_override_gate if payload else False
+    return BacklogDecompositionService.decompose_project(project_id, force, db)
 
 
 @router.post("/{project_id}/pm/auto-plan")

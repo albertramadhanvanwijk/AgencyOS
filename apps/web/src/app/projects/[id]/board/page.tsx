@@ -687,21 +687,21 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         }
       />
 
-      {/* Navigation Tabs: Kanban Board vs Backlog Planning */}
+      {/* Navigation Tabs: Backlog Planning on Left, Kanban Board on Right */}
       <div className="flex items-center space-x-2 border-b border-borderBase-light dark:border-borderBase-dark pb-3">
-        <Link
-          href={`/projects/${projectId}/board`}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors"
-        >
-          <Kanban className="w-4 h-4" />
-          <span>Papan Scrum (Board)</span>
-        </Link>
         <Link
           href={`/projects/${projectId}/backlog`}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
         >
           <ListTodo className="w-4 h-4" />
           <span>Backlog & Sprint Planning</span>
+        </Link>
+        <Link
+          href={`/projects/${projectId}/board`}
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors"
+        >
+          <Kanban className="w-4 h-4" />
+          <span>Papan Scrum (Board)</span>
         </Link>
       </div>
 

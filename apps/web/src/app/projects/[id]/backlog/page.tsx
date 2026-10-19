@@ -166,10 +166,21 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
   const handleMoveItemToSprint = async (itemId: string, sprintId: string | null) => {
     try {
       setActionError(null);
+      const targetItem = items.find((i) => i.id === itemId);
+      const payload: { sprint_id: string | null; status?: string } = {
+        sprint_id: sprintId,
+      };
+
+      if (sprintId !== null && targetItem?.status === "backlog" && (targetItem.acceptance_criteria?.length || 0) > 0) {
+        payload.status = "ready";
+      } else if (sprintId === null) {
+        payload.status = "backlog";
+      }
+
       const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sprint_id: sprintId }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -367,7 +378,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
 
   // Product Backlog items (unassigned to any active or planning sprint)
   const productBacklogItems = items.filter((item) => {
-    const isUnplanned = !item.sprint_id || item.status === "backlog";
+    const isUnplanned = !item.sprint_id;
     const matchesSearch =
       item.title.toLowerCase().includes(backlogSearch.toLowerCase()) ||
       item.key.toLowerCase().includes(backlogSearch.toLowerCase());
@@ -436,21 +447,21 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      {/* Navigation Tabs: Kanban Board vs Backlog Planning */}
+      {/* Navigation Tabs: Backlog Planning on Left, Kanban Board on Right */}
       <div className="flex items-center space-x-2 border-b border-borderBase-light dark:border-borderBase-dark pb-3">
-        <Link
-          href={`/projects/${projectId}/board`}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
-        >
-          <Kanban className="w-4 h-4" />
-          <span>Papan Scrum (Board)</span>
-        </Link>
         <Link
           href={`/projects/${projectId}/backlog`}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors"
         >
           <ListTodo className="w-4 h-4" />
           <span>Backlog & Sprint Planning</span>
+        </Link>
+        <Link
+          href={`/projects/${projectId}/board`}
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
+        >
+          <Kanban className="w-4 h-4" />
+          <span>Papan Scrum (Board)</span>
         </Link>
       </div>
 

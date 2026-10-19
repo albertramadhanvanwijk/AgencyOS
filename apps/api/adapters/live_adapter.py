@@ -54,7 +54,14 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 with open(self._storage_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict):
-                        self._llm_configs = data
+                        # Filter out unconfigured dummy placeholders
+                        filtered_data = {}
+                        for k, v in data.items():
+                            if k in ["openai-default", "ollama-local"] and not v.get("api_key") and "localhost" not in (v.get("base_url") or ""):
+                                continue
+                            filtered_data[k] = v
+                        self._llm_configs = filtered_data
+
                         # Sync active default config to adapter properties
                         has_default = False
                         for item in self._llm_configs.values():
@@ -96,9 +103,9 @@ class LiveLLMEngineAdapter(EngineAdapter):
     @property
     def api_key(self) -> Optional[str]:
         return (
-            self._api_key
-            or os.environ.get("GEMINI_API_KEY")
+            os.environ.get("GEMINI_API_KEY")
             or os.environ.get("LIVE_ENGINE_API_KEY")
+            or self._api_key
             or settings.GEMINI_API_KEY
             or settings.LIVE_ENGINE_API_KEY
         )
@@ -111,22 +118,33 @@ class LiveLLMEngineAdapter(EngineAdapter):
     def model(self) -> str:
         return self._model or os.environ.get("LIVE_ENGINE_MODEL") or settings.LIVE_ENGINE_MODEL
 
-    def set_config(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None):
-        if api_key is not None:
-            self._api_key = api_key.strip() if api_key.strip() else None
-        if base_url is not None:
+    def set_config(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+        clear_api_key: bool = False
+    ):
+        if clear_api_key:
+            self._api_key = None
+        elif api_key is not None and api_key.strip():
+            self._api_key = api_key.strip()
+
+        if base_url is not None and base_url.strip():
             self._base_url = base_url.strip().rstrip("/")
-        if model is not None:
+        if model is not None and model.strip():
             self._model = model.strip()
 
-        # Sync active default item in _llm_configs
+        # Sync active default item in _llm_configs safely
         for item in self._llm_configs.values():
             if item.get("is_default"):
-                if api_key is not None:
+                if clear_api_key:
+                    item["api_key"] = None
+                elif api_key is not None and api_key.strip():
                     item["api_key"] = self._api_key
-                if base_url is not None:
+                if base_url is not None and base_url.strip():
                     item["base_url"] = self._base_url
-                if model is not None:
+                if model is not None and model.strip():
                     item["model"] = self._model
 
     def list_llm_configs(self) -> list[dict[str, Any]]:
@@ -156,14 +174,18 @@ class LiveLLMEngineAdapter(EngineAdapter):
 
     def add_or_update_llm(self, data: dict[str, Any]) -> dict[str, Any]:
         llm_id = data.get("id") or f"llm-{uuid.uuid4().hex[:8]}"
-        api_key = data.get("api_key")
-        # If updating and api_key is empty/not provided, preserve existing key
-        if not api_key and llm_id in self._llm_configs:
-            api_key = self._llm_configs[llm_id].get("api_key")
+        
+        # Robustly preserve existing key if not provided or empty
+        raw_key = data.get("api_key")
+        if isinstance(raw_key, str):
+            raw_key = raw_key.strip()
+        if not raw_key and llm_id in self._llm_configs:
+            raw_key = self._llm_configs[llm_id].get("api_key")
+        api_key = raw_key if raw_key else None
 
         is_default = bool(data.get("is_default", False))
-        base_url = (data.get("base_url") or "https://api.openai.com/v1").rstrip("/")
-        model = data.get("model") or "gemini-2.0-flash"
+        base_url = (data.get("base_url") or "https://api.openai.com/v1").strip().rstrip("/")
+        model = (data.get("model") or "gemini-2.0-flash").strip()
 
         # Run health check
         health = self.health_check(
@@ -191,11 +213,9 @@ class LiveLLMEngineAdapter(EngineAdapter):
         if is_default:
             for k in self._llm_configs:
                 self._llm_configs[k]["is_default"] = False
-            self.set_config(
-                api_key=api_key,
-                base_url=base_url,
-                model=model
-            )
+            self._api_key = api_key
+            self._base_url = base_url
+            self._model = model
 
         self._llm_configs[llm_id] = item
         self._save_persisted_configs()
@@ -208,11 +228,10 @@ class LiveLLMEngineAdapter(EngineAdapter):
             self._llm_configs[k]["is_default"] = (k == llm_id)
 
         target = self._llm_configs[llm_id]
-        self.set_config(
-            api_key=target.get("api_key"),
-            base_url=target.get("base_url"),
-            model=target.get("model")
-        )
+        target_key = target.get("api_key")
+        self._api_key = target_key.strip() if target_key and target_key.strip() else None
+        self._base_url = (target.get("base_url") or "").strip().rstrip("/")
+        self._model = (target.get("model") or "").strip()
         self._save_persisted_configs()
         return True
 

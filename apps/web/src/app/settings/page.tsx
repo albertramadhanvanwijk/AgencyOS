@@ -105,6 +105,8 @@ export default function SettingsPage() {
   const [formTestResult, setFormTestResult] = useState<ConnectionTestResult | null>(null);
   const [formTesting, setFormTesting] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  const [formHasSavedKey, setFormHasSavedKey] = useState(false);
+  const [formMaskedKey, setFormMaskedKey] = useState("");
 
   // Specific row action states
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -162,6 +164,8 @@ export default function SettingsPage() {
     setFormProvider("Google Gemini");
     setFormBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
     setFormApiKey("");
+    setFormHasSavedKey(false);
+    setFormMaskedKey("");
     setFormModel("gemini-2.0-flash");
     setFormIsDefault(llms.length === 0);
     setFormShowKey(false);
@@ -175,6 +179,8 @@ export default function SettingsPage() {
     setFormProvider(item.provider);
     setFormBaseUrl(item.base_url);
     setFormApiKey(""); // Leave empty unless operator wants to overwrite
+    setFormHasSavedKey(item.has_api_key);
+    setFormMaskedKey(item.masked_api_key);
     setFormModel(item.model);
     setFormIsDefault(item.is_default);
     setFormShowKey(false);
@@ -210,6 +216,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          llm_id: editingLlmId || undefined,
           api_key: formApiKey.trim() || undefined,
           base_url: formBaseUrl.trim() || undefined,
           model: formModel.trim() || undefined,
@@ -747,7 +754,7 @@ export default function SettingsPage() {
               </div>
 
               {/* API Key */}
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label className="font-medium flex items-center justify-between">
                   <span className="flex items-center space-x-1.5">
                     <Key className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
@@ -758,12 +765,18 @@ export default function SettingsPage() {
                     Memory-Only / Redacted
                   </span>
                 </label>
+                {editingLlmId && formHasSavedKey && !formApiKey && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#209961] bg-[#16794B]/10 px-2.5 py-1.5 rounded border border-[#16794B]/20">
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    <span>API Key tersimpan: <strong className="font-mono">{formMaskedKey || "••••••••"}</strong> (Aktif & aman). Kosongkan jika tidak ingin mengubahnya.</span>
+                  </div>
+                )}
                 <div className="relative">
                   <input
                     type={formShowKey ? "text" : "password"}
                     value={formApiKey}
                     onChange={(e) => setFormApiKey(e.target.value)}
-                    placeholder={editingLlmId ? "Kosongkan bila tidak ingin mengubah API key tersimpan" : "AIzaSy•••••••• atau sk-••••••••"}
+                    placeholder={editingLlmId && formHasSavedKey ? "Kosongkan untuk tetap menggunakan API Key tersimpan" : "AIzaSy•••••••• atau sk-••••••••"}
                     className="w-full font-mono px-3 py-2 pr-10 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
                   />
                   <button

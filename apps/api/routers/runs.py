@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 from apps.api.core.database import get_db
+from apps.api.core.config import settings
 from apps.api.models.project import Project
 from apps.api.models.scrum import WorkItem
 from apps.api.models.execution import ExecutionRun, RunLog, RunArtifact, QualityCheckResult
@@ -123,10 +124,15 @@ def trigger_execution_run(
                     if prof.get("api_key") or "localhost" in (prof.get("base_url") or "") or "127.0.0.1" in (prof.get("base_url") or ""):
                         adapter_name = "LiveLLMEngineAdapter"
         if not adapter_name:
-            active_key = live_adapter.api_key
-            active_url = live_adapter.base_url or ""
-            if active_key or ("localhost" in active_url or "127.0.0.1" in active_url):
-                adapter_name = "LiveLLMEngineAdapter"
+            if settings.DEFAULT_ENGINE_ADAPTER and settings.DEFAULT_ENGINE_ADAPTER == "MockEngineAdapter":
+                adapter_name = "MockEngineAdapter"
+            else:
+                active_key = live_adapter.api_key
+                active_url = live_adapter.base_url or ""
+                if active_key or ("localhost" in active_url or "127.0.0.1" in active_url):
+                    adapter_name = "LiveLLMEngineAdapter"
+                else:
+                    adapter_name = settings.DEFAULT_ENGINE_ADAPTER or "MockEngineAdapter"
 
     adapter = get_adapter(adapter_name)
 

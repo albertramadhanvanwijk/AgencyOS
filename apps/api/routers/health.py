@@ -22,6 +22,7 @@ class TestConnectionIn(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     model: Optional[str] = None
+    llm_id: Optional[str] = None
 
 class ConfigureAdapterIn(BaseModel):
     api_key: Optional[str] = None
@@ -74,8 +75,13 @@ def test_adapter_connection(payload: TestConnectionIn):
     Tests connectivity to an LLM provider endpoint.
     Follows honesty rule: returns 'verified', 'not_configured', or 'error'.
     """
+    api_key = payload.api_key
+    # If testing an existing configured LLM and user did not supply a new key, use stored key
+    if (not api_key or not api_key.strip()) and payload.llm_id and payload.llm_id in live_adapter._llm_configs:
+        api_key = live_adapter._llm_configs[payload.llm_id].get("api_key")
+
     return live_adapter.health_check(
-        api_key=payload.api_key,
+        api_key=api_key,
         base_url=payload.base_url,
         model=payload.model
     )
@@ -142,6 +148,7 @@ def test_specific_llm(llm_id: str, response: Response):
     target["status"] = result.get("status", "error")
     target["health_message"] = result.get("message", "")
     target["available_models"] = result.get("available_models", [])
+    live_adapter._save_persisted_configs()
     return result
 
 @router.post("/system/llms/{llm_id}/set-default")

@@ -22,6 +22,7 @@ import {
   Folder,
   Layers,
   Search,
+  Bot,
 } from "lucide-react";
 
 interface ExecutionRun {
@@ -363,8 +364,8 @@ export default function ExecutionRunDetailPage({
         <TableSkeleton rows={6} />
       ) : run ? (
         <div className="space-y-4">
-          {/* Simulated Provenance Banner */}
-          {run.is_simulated && (
+          {/* Simulated / Live Provenance Banner */}
+          {run.is_simulated ? (
             <div className="p-3.5 rounded-md bg-status-warning/10 border border-status-warning/30 flex items-center justify-between text-xs">
               <div className="flex items-center space-x-2.5 text-status-warning">
                 <Sparkles className="w-4 h-4 flex-shrink-0" />
@@ -377,6 +378,21 @@ export default function ExecutionRunDetailPage({
               </div>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-status-warning/20 text-status-warning">
                 Safe Sandbox
+              </span>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-md bg-[#16794B]/10 border border-[#16794B]/30 flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2.5 text-status-success dark:text-[#209961]">
+                <Bot className="w-4 h-4 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold block">[LIVE] Autonomous Code Generation Engine</span>
+                  <span className="text-textMuted-light dark:text-textMuted-dark">
+                    Code changes, diffs, and validation tests executed live via {run.adapter_name} inside isolated sandbox workspace.
+                  </span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#16794B]/20 text-[#16794B] dark:text-[#209961]">
+                Live Execution
               </span>
             </div>
           )}

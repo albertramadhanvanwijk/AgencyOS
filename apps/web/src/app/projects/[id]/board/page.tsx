@@ -38,6 +38,7 @@ import {
   Kanban,
   ListTodo,
   Calendar,
+  Bot,
 } from "lucide-react";
 
 interface AgentRecommendation {
@@ -1714,10 +1715,15 @@ export default function ScrumBoardPage({
                     }
                     label={activeRun.status.toUpperCase()}
                   />
-                  {activeRun.is_simulated && (
+                  {activeRun.is_simulated ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-status-warning/15 text-status-warning border border-status-warning/30 flex items-center space-x-1">
                       <Sparkles className="w-3 h-3" />
-                      <span>[SIMULATED] MockEngineAdapter</span>
+                      <span>[SIMULATED] {activeRun.adapter_name}</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#16794B]/15 text-[#16794B] dark:text-[#209961] border border-[#16794B]/30 flex items-center space-x-1">
+                      <Bot className="w-3 h-3" />
+                      <span>[LIVE] {activeRun.adapter_name}</span>
                     </span>
                   )}
                 </div>

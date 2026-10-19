@@ -10,10 +10,9 @@ from apps.api.models.scrum import WorkItem
 from apps.api.models.execution import ExecutionRun, RunLog, RunArtifact, QualityCheckResult
 from apps.api.models.audit import AuditEvent
 from apps.api.services.workspace_manager import workspace_manager
-from apps.api.adapters.mock_adapter import MockEngineAdapter
+from apps.api.adapters.registry import get_adapter
 
 router = APIRouter(tags=["Execution Runs"])
-mock_adapter = MockEngineAdapter()
 
 # --- Pydantic Schemas ---
 
@@ -78,12 +77,14 @@ class ExecutionRunOut(BaseModel):
 def trigger_execution_run(
     project_id: str,
     work_item_id: str,
+    adapter_name: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Triggers an execution run for a work item using MockEngineAdapter.
+    Triggers an execution run for a work item using the selected EngineAdapter
+    (defaulting to settings.DEFAULT_ENGINE_ADAPTER or MockEngineAdapter).
     Validates work item readiness, allocates isolated run workspace,
-    executes multi-step simulation, records logs/artifacts, and transitions state.
+    executes run, records logs/artifacts, and transitions state.
     """
     # 1. Validate Project & Work Item
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -108,15 +109,17 @@ def trigger_execution_run(
     if work_item.status == "ready":
         work_item.status = "in_progress"
 
-    # 4. Create Run Record & Isolated Workspace
+    # 4. Resolve Adapter & Create Run Record
+    adapter = get_adapter(adapter_name)
+
     run = ExecutionRun(
         project_id=project_id,
         work_item_id=work_item_id,
         agent_id=work_item.assignee_agent_id,
         status="queued",
         workspace_path="",
-        is_simulated=True,
-        adapter_name=mock_adapter.adapter_name
+        is_simulated=adapter.is_simulated,
+        adapter_name=adapter.adapter_name
     )
     db.add(run)
     db.flush()
@@ -134,21 +137,21 @@ def trigger_execution_run(
         project_id=project_id,
         details={
             "work_item_key": work_item.key,
-            "adapter": mock_adapter.adapter_name,
-            "is_simulated": True,
+            "adapter": adapter.adapter_name,
+            "is_simulated": adapter.is_simulated,
             "workspace_path": str(run_workspace)
         }
     ))
     db.commit()
 
-    # 6. Execute Run through Mock Engine Adapter
-    completed_run = mock_adapter.execute_run(run, work_item, run_workspace, db)
+    # 6. Execute Run through Selected Engine Adapter
+    completed_run = adapter.execute_run(run, work_item, run_workspace, db)
 
     # 7. Advance Work Item to In Review if run completed successfully
     if completed_run.status in ["review", "succeeded"]:
         work_item.status = "in_review"
         db.add(AuditEvent(
-            actor="MockEngineAdapter",
+            actor=adapter.adapter_name,
             action="WORK_ITEM_STATUS_TRANSITION",
             target_type="WORK_ITEM",
             target_id=work_item.id,
@@ -212,5 +215,6 @@ def cancel_execution_run(run_id: str, db: Session = Depends(get_db)):
     run = db.query(ExecutionRun).filter(ExecutionRun.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Execution run not found.")
-    mock_adapter.cancel_run(run, db)
+    adapter = get_adapter(run.adapter_name)
+    adapter.cancel_run(run, db)
     return run

@@ -23,6 +23,8 @@ import {
   Flame,
   Check,
   RotateCcw,
+  Edit2,
+  Trash2,
   GitBranch,
   GripVertical,
   Play,
@@ -232,6 +234,25 @@ export default function ScrumBoardPage({
   const [newCriterionInput, setNewCriterionInput] = useState("");
   const [addingCriterion, setAddingCriterion] = useState(false);
 
+  // Edit Task State
+  const [isEditingItem, setIsEditingItem] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editType, setEditType] = useState("task");
+  const [editPriority, setEditPriority] = useState<PriorityLevel>("medium");
+  const [editPoints, setEditPoints] = useState(1.0);
+  const [editAssigneeId, setEditAssigneeId] = useState("");
+  const [editSprintId, setEditSprintId] = useState("");
+  const [editCriteria, setEditCriteria] = useState<string[]>([]);
+  const [editDod, setEditDod] = useState<string[]>([]);
+  const [newCriterionDraft, setNewCriterionDraft] = useState("");
+  const [newDodDraft, setNewDodDraft] = useState("");
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // In-Progress Strategy Modal
+  const [showInProgressStrategyModal, setShowInProgressStrategyModal] = useState(false);
+
   // Sprint Capacity & Team Allocation State
   const [sprintCapacity, setSprintCapacity] = useState<SprintCapacity | null>(null);
 
@@ -336,6 +357,101 @@ export default function ScrumBoardPage({
       if (err instanceof Error) setTransitionError(err.message);
     } finally {
       setAddingCriterion(false);
+    }
+  };
+
+  const startEditing = () => {
+    if (!selectedItem) return;
+    setEditTitle(selectedItem.title);
+    setEditDesc(selectedItem.description || "");
+    setEditType(selectedItem.type || "task");
+    setEditPriority((selectedItem.priority as PriorityLevel) || "medium");
+    setEditPoints(selectedItem.estimate_points || 1.0);
+    setEditAssigneeId(selectedItem.assignee_agent_id || "");
+    setEditSprintId(selectedItem.sprint_id || "");
+    setEditCriteria(selectedItem.acceptance_criteria ? [...selectedItem.acceptance_criteria] : []);
+    setEditDod(selectedItem.definition_of_done ? [...selectedItem.definition_of_done] : []);
+    setNewCriterionDraft("");
+    setNewDodDraft("");
+    setEditError(null);
+    setIsEditingItem(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditingItem(false);
+    setEditError(null);
+    setShowInProgressStrategyModal(false);
+  };
+
+  const handleSaveItemEdit = async (strategy?: "preserve" | "reset") => {
+    if (!selectedItem) return;
+    if (!editTitle.trim()) {
+      setEditError("Judul task tidak boleh kosong.");
+      return;
+    }
+
+    // If item is in_progress and no strategy chosen yet, prompt confirmation dialog
+    if (selectedItem.status === "in_progress" && !strategy) {
+      setShowInProgressStrategyModal(true);
+      return;
+    }
+
+    try {
+      setEditSubmitting(true);
+      setEditError(null);
+
+      const parsedPoints = Number(editPoints);
+      const safePoints = isNaN(parsedPoints) || parsedPoints < 0 ? 1.0 : parsedPoints;
+
+      const payload = {
+        title: editTitle.trim(),
+        description: editDesc.trim() || undefined,
+        type: editType,
+        priority: editPriority,
+        estimate_points: safePoints,
+        assignee_agent_id: editAssigneeId && editAssigneeId.trim() ? editAssigneeId.trim() : undefined,
+        sprint_id: editSprintId === "none" ? undefined : (editSprintId || undefined),
+        acceptance_criteria: editCriteria.filter((c) => c.trim().length > 0),
+        definition_of_done: editDod.filter((d) => d.trim().length > 0),
+      };
+
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${selectedItem.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        let errorMsg = "Gagal menyimpan perubahan task.";
+        try {
+          const errJson = await res.json();
+          if (typeof errJson.detail === "string") {
+            errorMsg = errJson.detail;
+          } else if (Array.isArray(errJson.detail)) {
+            errorMsg = errJson.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+          } else if (errJson.message) {
+            errorMsg = errJson.message;
+          }
+        } catch {}
+        throw new Error(errorMsg);
+      }
+
+      const updatedItem = await res.json();
+      setSelectedItem(updatedItem);
+      setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
+      setIsEditingItem(false);
+      setShowInProgressStrategyModal(false);
+
+      if (strategy === "reset") {
+        await handleTriggerRun(updatedItem.id);
+      } else {
+        await fetchBoardData();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan perubahan.";
+      setEditError(msg);
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -1158,414 +1274,794 @@ export default function ScrumBoardPage({
           <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark gap-3">
-              <div className="space-y-1.5 min-w-0">
+              <div className="space-y-1.5 min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
                     {selectedItem.key}
                   </span>
                   <StatusBadge variant="info" label={selectedItem.status.toUpperCase()} />
                   <PriorityIndicator level={selectedItem.priority as PriorityLevel} />
+                  {isEditingItem && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      Mode Pengeditan
+                    </span>
+                  )}
                 </div>
-                <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark leading-snug">
-                  {selectedItem.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="p-1.5 rounded-md text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Scrollable Body */}
-            <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
-              {/* Description Card */}
-              {selectedItem.description && (
-                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
-                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
-                    Deskripsi Tugas
-                  </span>
-                  <p className="text-xs text-textPrimary-light dark:text-textPrimary-dark leading-relaxed whitespace-pre-wrap">
-                    {selectedItem.description}
-                  </p>
-                </div>
-              )}
-
-              {/* Acceptance Criteria Card */}
-              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
-                    Acceptance Criteria (Tolok Ukur Pengujian)
-                  </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent/10 text-accent font-semibold">
-                    {selectedItem.acceptance_criteria?.length || 0} Kriteria
-                  </span>
-                </div>
-                {selectedItem.acceptance_criteria && selectedItem.acceptance_criteria.length > 0 ? (
-                  <ul className="space-y-1.5">
-                    {selectedItem.acceptance_criteria.map((c, i) => (
-                      <li key={i} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
-                        <Check className="w-3.5 h-3.5 text-status-success shrink-0 mt-0.5" />
-                        <span className="leading-snug">{c}</span>
-                      </li>
-                    ))}
-                  </ul>
+                {!isEditingItem ? (
+                  <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark leading-snug">
+                    {selectedItem.title}
+                  </h3>
                 ) : (
-                  <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px] flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Belum ada acceptance criteria. Tambahkan minimal 1 kriteria di bawah agar dapat dipindahkan ke Ready.</span>
+                  <div className="pt-1">
+                    <label className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
+                      Judul Task *
+                    </label>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Judul task..."
+                      className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
                   </div>
                 )}
-
-                {/* Quick Add Criterion Inline */}
-                <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
-                  <input
-                    type="text"
-                    placeholder="Tambah kriteria pengujian (misal: Unit test lulus, API return 200)..."
-                    value={newCriterionInput}
-                    onChange={(e) => setNewCriterionInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddCriterion();
-                      }
-                    }}
-                    className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!isEditingItem ? (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleAddCriterion}
-                    isLoading={addingCriterion}
-                    disabled={!newCriterionInput.trim()}
-                    leftIcon={<Plus className="w-3 h-3" />}
+                    onClick={startEditing}
+                    leftIcon={<Edit2 className="w-3.5 h-3.5 text-accent" />}
                   >
-                    Tambah
+                    Edit Task
                   </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={cancelEditing}
+                  >
+                    Batal
+                  </Button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedItem(null);
+                    setIsEditingItem(false);
+                  }}
+                  className="p-1.5 rounded-md text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            {isEditingItem ? (
+              /* --- EDIT MODE BODY --- */
+              <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
+                {editError && (
+                  <div className="p-2.5 rounded-lg bg-status-error/10 border border-status-error/30 text-status-error text-xs flex items-center gap-2 animate-in fade-in">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                {/* Classification & Metadata Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-3">
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                    Klasifikasi & Penugasan
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        Tipe
+                      </label>
+                      <select
+                        value={editType}
+                        onChange={(e) => setEditType(e.target.value)}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="task">Task</option>
+                        <option value="story">Story</option>
+                        <option value="bug">Bug</option>
+                        <option value="epic">Epic</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        Prioritas
+                      </label>
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value as PriorityLevel)}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        Story Points
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={isNaN(editPoints) ? "" : editPoints}
+                        onChange={(e) => setEditPoints(e.target.value === "" ? 1.0 : parseFloat(e.target.value))}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div>
+                      <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        Target Sprint
+                      </label>
+                      <select
+                        value={editSprintId}
+                        onChange={(e) => setEditSprintId(e.target.value)}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        {activeSprint && (
+                          <option value={activeSprint.id}>
+                            {activeSprint.name} (Active Sprint)
+                          </option>
+                        )}
+                        {sprints
+                          .filter((s) => s.id !== activeSprint?.id)
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.status})
+                            </option>
+                          ))}
+                        <option value="none">Product Backlog (Tanpa Sprint)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        Agen yang Ditugaskan
+                      </label>
+                      <select
+                        value={editAssigneeId}
+                        onChange={(e) => setEditAssigneeId(e.target.value)}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="">Belum Ditugaskan (Unassigned)</option>
+                        {agents.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name} ({a.title})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
+                  <label className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                    Deskripsi Tugas
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    placeholder="Konteks, instruksi pengerjaan, dan detail implementasi..."
+                    className="w-full p-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+
+                {/* Acceptance Criteria Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
+                      Acceptance Criteria ({editCriteria.length})
+                    </span>
+                    <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                      Wajib minimal 1 kriteria untuk status Ready
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {editCriteria.map((c, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={c}
+                          onChange={(e) => {
+                            const updated = [...editCriteria];
+                            updated[idx] = e.target.value;
+                            setEditCriteria(updated);
+                          }}
+                          className="flex-1 h-7.5 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditCriteria(editCriteria.filter((_, i) => i !== idx))}
+                          className="p-1.5 rounded text-status-danger hover:bg-status-danger/10 transition-colors shrink-0"
+                          title="Hapus kriteria ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                    <input
+                      type="text"
+                      placeholder="Tambah kriteria pengujian baru..."
+                      value={newCriterionDraft}
+                      onChange={(e) => setNewCriterionDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newCriterionDraft.trim()) {
+                          e.preventDefault();
+                          setEditCriteria([...editCriteria, newCriterionDraft.trim()]);
+                          setNewCriterionDraft("");
+                        }
+                      }}
+                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!newCriterionDraft.trim()}
+                      onClick={() => {
+                        if (newCriterionDraft.trim()) {
+                          setEditCriteria([...editCriteria, newCriterionDraft.trim()]);
+                          setNewCriterionDraft("");
+                        }
+                      }}
+                      leftIcon={<Plus className="w-3 h-3" />}
+                    >
+                      Tambah
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Definition of Done Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                    Definition of Done ({editDod.length})
+                  </span>
+
+                  <div className="space-y-1.5">
+                    {editDod.map((d, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={d}
+                          onChange={(e) => {
+                            const updated = [...editDod];
+                            updated[idx] = e.target.value;
+                            setEditDod(updated);
+                          }}
+                          className="flex-1 h-7.5 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditDod(editDod.filter((_, i) => i !== idx))}
+                          className="p-1.5 rounded text-status-danger hover:bg-status-danger/10 transition-colors shrink-0"
+                          title="Hapus DoD ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                    <input
+                      type="text"
+                      placeholder="Tambah item Definition of Done baru..."
+                      value={newDodDraft}
+                      onChange={(e) => setNewDodDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newDodDraft.trim()) {
+                          e.preventDefault();
+                          setEditDod([...editDod, newDodDraft.trim()]);
+                          setNewDodDraft("");
+                        }
+                      }}
+                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!newDodDraft.trim()}
+                      onClick={() => {
+                        if (newDodDraft.trim()) {
+                          setEditDod([...editDod, newDodDraft.trim()]);
+                          setNewDodDraft("");
+                        }
+                      }}
+                      leftIcon={<Plus className="w-3 h-3" />}
+                    >
+                      Tambah
+                    </Button>
+                  </div>
                 </div>
               </div>
-
-              {/* Definition of Done Card */}
-              {selectedItem.definition_of_done && selectedItem.definition_of_done.length > 0 && (
-                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
-                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
-                    Definition of Done
-                  </span>
-                  <ul className="space-y-1.5">
-                    {selectedItem.definition_of_done.map((dod, i) => (
-                      <li key={i} className="flex items-center gap-2 text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                        <span>{dod}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Assignee & Model & Estimate Card */}
-              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
-                    Agen yang Ditugaskan
-                  </span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-xs flex items-center gap-1.5 text-textPrimary-light dark:text-textPrimary-dark">
-                      <User className="w-3.5 h-3.5 text-accent shrink-0" />
-                      <span>{selectedItem.assignee_name || "Belum Ditugaskan"}</span>
+            ) : (
+              /* --- VIEW MODE BODY --- */
+              <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
+                {/* Description Card */}
+                {selectedItem.description && (
+                  <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                      Deskripsi Tugas
                     </span>
+                    <p className="text-xs text-textPrimary-light dark:text-textPrimary-dark leading-relaxed whitespace-pre-wrap">
+                      {selectedItem.description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Acceptance Criteria Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
+                      Acceptance Criteria (Tolok Ukur Pengujian)
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent/10 text-accent font-semibold">
+                      {selectedItem.acceptance_criteria?.length || 0} Kriteria
+                    </span>
+                  </div>
+                  {selectedItem.acceptance_criteria && selectedItem.acceptance_criteria.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {selectedItem.acceptance_criteria.map((c, i) => (
+                        <li key={i} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
+                          <Check className="w-3.5 h-3.5 text-status-success shrink-0 mt-0.5" />
+                          <span className="leading-snug">{c}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px] flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Belum ada acceptance criteria. Tambahkan minimal 1 kriteria di bawah agar dapat dipindahkan ke Ready.</span>
+                    </div>
+                  )}
+
+                  {/* Quick Add Criterion Inline */}
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                    <input
+                      type="text"
+                      placeholder="Tambah kriteria pengujian (misal: Unit test lulus, API return 200)..."
+                      value={newCriterionInput}
+                      onChange={(e) => setNewCriterionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddCriterion();
+                        }
+                      }}
+                      className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddCriterion}
+                      isLoading={addingCriterion}
+                      disabled={!newCriterionInput.trim()}
+                      leftIcon={<Plus className="w-3 h-3" />}
+                    >
+                      Tambah
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Definition of Done Card */}
+                {selectedItem.definition_of_done && selectedItem.definition_of_done.length > 0 && (
+                  <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                      Definition of Done
+                    </span>
+                    <ul className="space-y-1.5">
+                      {selectedItem.definition_of_done.map((dod, i) => (
+                        <li key={i} className="flex items-center gap-2 text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                          <span>{dod}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Assignee & Model & Estimate Card */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
+                      Agen yang Ditugaskan
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-xs flex items-center gap-1.5 text-textPrimary-light dark:text-textPrimary-dark">
+                        <User className="w-3.5 h-3.5 text-accent shrink-0" />
+                        <span>{selectedItem.assignee_name || "Belum Ditugaskan"}</span>
+                      </span>
+                      {(() => {
+                        const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                        if (assigned?.llm_model) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium"
+                              title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
+                            >
+                              <Sparkles className="w-2.5 h-2.5 text-purple-500 shrink-0" />
+                              <span>{assigned.llm_model}</span>
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                     {(() => {
                       const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
-                      if (assigned?.llm_model) {
+                      if (assigned?.llm_profile_name) {
                         return (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium"
-                            title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
-                          >
-                            <Sparkles className="w-2.5 h-2.5 text-purple-500 shrink-0" />
-                            <span>{assigned.llm_model}</span>
+                          <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mt-1">
+                            Provider: {assigned.llm_profile_name}
                           </span>
                         );
                       }
                       return null;
                     })()}
                   </div>
-                  {(() => {
-                    const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
-                    if (assigned?.llm_profile_name) {
-                      return (
-                        <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mt-1">
-                          Provider: {assigned.llm_profile_name}
-                        </span>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
-                    Estimasi Story Points
-                  </span>
-                  <span className="font-mono font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
-                    {selectedItem.estimate_points} Points
-                  </span>
-                </div>
-              </div>
-
-              {/* Smart Staffing Panel */}
-              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs flex items-center gap-1.5 text-accent">
-                    <Zap className="w-3.5 h-3.5 shrink-0" />
-                    <span>Smart Staffing & Rekomendasi</span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => fetchRecommendations(selectedItem.id)}
-                    isLoading={loadingRecs}
-                    leftIcon={<Sparkles className="w-3 h-3 text-accent" />}
-                  >
-                    {recommendations.length > 0 && showRecsSection ? "Segarkan" : "Cari Agen Terbaik"}
-                  </Button>
+                  <div>
+                    <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
+                      Estimasi Story Points
+                    </span>
+                    <span className="font-mono font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
+                      {selectedItem.estimate_points} Points
+                    </span>
+                  </div>
                 </div>
 
-                {/* Recommendation Candidates List */}
-                {showRecsSection && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {loadingRecs ? (
-                      <div className="p-3 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                        Menganalisis kecocokan skill, peran & kapasitas agen...
-                      </div>
-                    ) : recommendations.length === 0 ? (
-                      <div className="p-2 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                        Tidak ada agen aktif yang tersedia saat ini.
-                      </div>
-                    ) : (
-                      recommendations.map((rec) => {
-                        const isAssigned = selectedItem.assignee_agent_id === rec.agent_id;
-                        return (
-                          <div
-                            key={rec.agent_id}
-                            className={`p-3 rounded-lg border transition-all text-xs space-y-1.5 ${
-                              rec.is_recommended
-                                ? "border-accent/50 bg-accent/5 dark:bg-accent/10"
-                                : "border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                                <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
-                                  {rec.name}
-                                </span>
-                                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark truncate">
-                                  ({rec.role_name})
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span
-                                  className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
-                                    rec.match_score >= 80
-                                      ? "bg-status-success/15 text-status-success border border-status-success/30"
-                                      : "bg-status-info/15 text-status-info border border-status-info/30"
-                                  }`}
-                                >
-                                  {rec.match_score}% Cocok
-                                </span>
-                                {rec.is_recommended && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-accent text-white">
-                                    Best Fit
+                {/* Smart Staffing Panel */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs flex items-center gap-1.5 text-accent">
+                      <Zap className="w-3.5 h-3.5 shrink-0" />
+                      <span>Smart Staffing & Rekomendasi</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fetchRecommendations(selectedItem.id)}
+                      isLoading={loadingRecs}
+                      leftIcon={<Sparkles className="w-3 h-3 text-accent" />}
+                    >
+                      {recommendations.length > 0 && showRecsSection ? "Segarkan" : "Cari Agen Terbaik"}
+                    </Button>
+                  </div>
+
+                  {/* Recommendation Candidates List */}
+                  {showRecsSection && (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {loadingRecs ? (
+                        <div className="p-3 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                          Menganalisis kecocokan skill, peran & kapasitas agen...
+                        </div>
+                      ) : recommendations.length === 0 ? (
+                        <div className="p-2 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                          Tidak ada agen aktif yang tersedia saat ini.
+                        </div>
+                      ) : (
+                        recommendations.map((rec) => {
+                          const isAssigned = selectedItem.assignee_agent_id === rec.agent_id;
+                          return (
+                            <div
+                              key={rec.agent_id}
+                              className={`p-3 rounded-lg border transition-all text-xs space-y-1.5 ${
+                                rec.is_recommended
+                                  ? "border-accent/50 bg-accent/5 dark:bg-accent/10"
+                                  : "border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                                  <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
+                                    {rec.name}
                                   </span>
+                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark truncate">
+                                    ({rec.role_name})
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
+                                      rec.match_score >= 80
+                                        ? "bg-status-success/15 text-status-success border border-status-success/30"
+                                        : "bg-status-info/15 text-status-info border border-status-info/30"
+                                    }`}
+                                  >
+                                    {rec.match_score}% Cocok
+                                  </span>
+                                  {rec.is_recommended && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-accent text-white">
+                                      Best Fit
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-tight">
+                                {rec.rationale}
+                              </p>
+
+                              {rec.matched_skills.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {rec.matched_skills.map((s, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="px-1.5 py-0.2 rounded text-[9px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textPrimary-light dark:text-textPrimary-dark"
+                                    >
+                                      ✓ {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between pt-1.5 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px]">
+                                <span className="text-textMuted-light dark:text-textMuted-dark font-mono">
+                                  Slot Aktif: {rec.current_concurrency}/{rec.max_concurrency}
+                                </span>
+                                {isAssigned ? (
+                                  <span className="font-semibold text-status-success flex items-center gap-1">
+                                    <Check className="w-3 h-3" />
+                                    <span>Sedang Ditugaskan</span>
+                                  </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAssignAgent(selectedItem.id, rec.agent_id, rec.rationale)}
+                                    isLoading={assigningAgentId === rec.agent_id}
+                                    leftIcon={<User className="w-3 h-3" />}
+                                  >
+                                    Tugaskan Agen
+                                  </Button>
                                 )}
                               </div>
                             </div>
-
-                            <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-tight">
-                              {rec.rationale}
-                            </p>
-
-                            {rec.matched_skills.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {rec.matched_skills.map((s, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="px-1.5 py-0.2 rounded text-[9px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textPrimary-light dark:text-textPrimary-dark"
-                                  >
-                                    ✓ {s}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex items-center justify-between pt-1.5 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px]">
-                              <span className="text-textMuted-light dark:text-textMuted-dark font-mono">
-                                Slot Aktif: {rec.current_concurrency}/{rec.max_concurrency}
-                              </span>
-                              {isAssigned ? (
-                                <span className="font-semibold text-status-success flex items-center gap-1">
-                                  <Check className="w-3 h-3" />
-                                  <span>Sedang Ditugaskan</span>
-                                </span>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleAssignAgent(selectedItem.id, rec.agent_id, rec.rationale)}
-                                  isLoading={assigningAgentId === rec.agent_id}
-                                  leftIcon={<User className="w-3 h-3" />}
-                                >
-                                  Tugaskan Agen
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Modal Action Footer with Responsive Auto-Layout */}
-            <div className="pt-3.5 border-t border-borderBase-light dark:border-borderBase-dark flex flex-wrap items-center justify-between gap-2.5">
-              <Button size="sm" variant="outline" onClick={() => setSelectedItem(null)}>
-                Tutup
-              </Button>
-              <div className="flex flex-wrap items-center gap-2 min-w-0">
-                {/* Reverse transitions */}
-                {selectedItem.status === "ready" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTransition(selectedItem.id, "backlog")}
-                    leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
-                  >
-                    Kembali ke Backlog
-                  </Button>
-                )}
-                {selectedItem.status === "in_progress" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTransition(selectedItem.id, "ready")}
-                    leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
-                  >
-                    Kembali ke Ready
-                  </Button>
-                )}
-                {selectedItem.status === "in_review" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTransition(selectedItem.id, "in_progress")}
-                    leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
-                  >
-                    Minta Rework
-                  </Button>
-                )}
-                {selectedItem.status === "done" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleTransition(selectedItem.id, "in_review")}
-                    leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
-                  >
-                    Buka Ulang
-                  </Button>
-                )}
+            {/* Modal Action Footer */}
+            {isEditingItem ? (
+              <div className="pt-3.5 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between gap-2.5">
+                <Button size="sm" variant="outline" onClick={cancelEditing}>
+                  Batal
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleSaveItemEdit()}
+                  isLoading={editSubmitting}
+                  leftIcon={<Check className="w-3.5 h-3.5" />}
+                >
+                  Simpan Perubahan
+                </Button>
+              </div>
+            ) : (
+              <div className="pt-3.5 border-t border-borderBase-light dark:border-borderBase-dark flex flex-wrap items-center justify-between gap-2.5">
+                <Button size="sm" variant="outline" onClick={() => setSelectedItem(null)}>
+                  Tutup
+                </Button>
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  {/* Reverse transitions */}
+                  {selectedItem.status === "ready" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTransition(selectedItem.id, "backlog")}
+                      leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                    >
+                      Kembali ke Backlog
+                    </Button>
+                  )}
+                  {selectedItem.status === "in_progress" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTransition(selectedItem.id, "ready")}
+                      leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                    >
+                      Kembali ke Ready
+                    </Button>
+                  )}
+                  {selectedItem.status === "in_review" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTransition(selectedItem.id, "in_progress")}
+                      leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                    >
+                      Minta Rework
+                    </Button>
+                  )}
+                  {selectedItem.status === "done" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTransition(selectedItem.id, "in_review")}
+                      leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                    >
+                      Buka Ulang
+                    </Button>
+                  )}
 
-                {/* Forward transitions */}
-                {selectedItem.status === "backlog" && (
-                  <Button
-                    size="sm"
-                    onClick={() => handleTransition(selectedItem.id, "ready")}
-                    disabled={!selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0}
-                    title={
-                      !selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0
-                        ? "Wajib memiliki minimal 1 Acceptance Criteria sebelum dipindahkan ke Ready"
-                        : "Pindahkan ke Ready"
-                    }
-                  >
-                    Siap Dikerjakan (Ready) →
-                  </Button>
-                )}
-                {selectedItem.status === "ready" && (
-                  <>
-                    {(() => {
-                      const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
-                      return (
-                        <Button
-                          size="sm"
-                          onClick={() => handleTriggerRun(selectedItem.id)}
-                          isLoading={triggeringRunId === selectedItem.id}
-                          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                        >
-                          <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
-                          {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
-                            <span className="text-[10px] font-mono opacity-80 font-normal">
-                              ({getCleanModelBadge(assigned.llm_model)})
-                            </span>
-                          )}
-                        </Button>
-                      );
-                    })()}
-                    <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_progress")}>
-                      Mulai Manual →
+                  {/* Forward transitions */}
+                  {selectedItem.status === "backlog" && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleTransition(selectedItem.id, "ready")}
+                      disabled={!selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0}
+                      title={
+                        !selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0
+                          ? "Wajib memiliki minimal 1 Acceptance Criteria sebelum dipindahkan ke Ready"
+                          : "Pindahkan ke Ready"
+                      }
+                    >
+                      Siap Dikerjakan (Ready) →
                     </Button>
-                  </>
-                )}
-                {selectedItem.status === "in_progress" && (
-                  <>
-                    {(() => {
-                      const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
-                      return (
-                        <Button
-                          size="sm"
-                          onClick={() => handleTriggerRun(selectedItem.id)}
-                          isLoading={triggeringRunId === selectedItem.id}
-                          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                        >
-                          <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
-                          {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
-                            <span className="text-[10px] font-mono opacity-80 font-normal">
-                              ({getCleanModelBadge(assigned.llm_model)})
-                            </span>
-                          )}
-                        </Button>
-                      );
-                    })()}
-                    <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_review")}>
-                      Review →
-                    </Button>
-                  </>
-                )}
-                {selectedItem.status === "in_review" && (
-                  <>
+                  )}
+                  {selectedItem.status === "ready" && (
+                    <>
+                      {(() => {
+                        const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={() => handleTriggerRun(selectedItem.id)}
+                            isLoading={triggeringRunId === selectedItem.id}
+                            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                          >
+                            <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
+                            {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
+                              <span className="text-[10px] font-mono opacity-80 font-normal">
+                                ({getCleanModelBadge(assigned.llm_model)})
+                              </span>
+                            )}
+                          </Button>
+                        );
+                      })()}
+                      <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_progress")}>
+                        Mulai Manual →
+                      </Button>
+                    </>
+                  )}
+                  {selectedItem.status === "in_progress" && (
+                    <>
+                      {(() => {
+                        const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={() => handleTriggerRun(selectedItem.id)}
+                            isLoading={triggeringRunId === selectedItem.id}
+                            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                          >
+                            <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
+                            {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
+                              <span className="text-[10px] font-mono opacity-80 font-normal">
+                                ({getCleanModelBadge(assigned.llm_model)})
+                              </span>
+                            )}
+                          </Button>
+                        );
+                      })()}
+                      <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_review")}>
+                        Review →
+                      </Button>
+                    </>
+                  )}
+                  {selectedItem.status === "in_review" && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenLatestRun(selectedItem.id)}
+                        leftIcon={<Terminal className="w-3.5 h-3.5" />}
+                      >
+                        Hasil Run & Diffs
+                      </Button>
+                      <Button size="sm" variant="primary" onClick={() => handleTransition(selectedItem.id, "done")}>
+                        Setujui (Approve) ✓
+                      </Button>
+                    </>
+                  )}
+                  {selectedItem.status === "done" && (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleOpenLatestRun(selectedItem.id)}
-                      leftIcon={<Terminal className="w-3.5 h-3.5" />}
+                      leftIcon={<FileCode className="w-3.5 h-3.5" />}
                     >
-                      Hasil Run & Diffs
+                      Lihat Artefak
                     </Button>
-                    <Button size="sm" variant="primary" onClick={() => handleTransition(selectedItem.id, "done")}>
-                      Setujui (Approve) ✓
-                    </Button>
-                  </>
-                )}
-                {selectedItem.status === "done" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleOpenLatestRun(selectedItem.id)}
-                    leftIcon={<FileCode className="w-3.5 h-3.5" />}
-                  >
-                    Lihat Artefak
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* In-Progress Strategy Confirmation Modal */}
+      {showInProgressStrategyModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-accent/10 text-accent shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                  Task Sedang Dikerjakan (In Progress)
+                </h4>
+                <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-1 leading-relaxed">
+                  Perubahan spesifikasi terdeteksi pada task yang sedang aktif. Pilih bagaimana agen harus menangani draf kodenya:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleSaveItemEdit("preserve")}
+                disabled={editSubmitting}
+                className="w-full text-left p-3 rounded-lg border border-accent/40 bg-accent/5 dark:bg-accent/10 hover:border-accent hover:bg-accent/15 transition-all text-xs space-y-1 group"
+              >
+                <div className="font-semibold text-accent flex items-center justify-between">
+                  <span>1. Simpan & Sesuaikan Draf (Hemat Token ⭐)</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent text-white font-normal">Rekomendasi</span>
+                </div>
+                <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-snug">
+                  Memperbarui kriteria baru dan mempertahankan draf kode yang sudah dibuat agen agar proses revisi berjalan efisien tanpa mulai dari nol.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveItemEdit("reset")}
+                disabled={editSubmitting}
+                className="w-full text-left p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/30 hover:border-borderBase-light hover:bg-surfaceSecondary-light/70 transition-all text-xs space-y-1"
+              >
+                <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5">
+                  <RotateCcw className="w-3.5 h-3.5 text-status-warning" />
+                  <span>2. Simpan & Reset Draf dari Awal</span>
+                </div>
+                <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-snug">
+                  Membersihkan draf kode lama dan agen akan mengeksekusi ulang dari titik awal (clean branch) berdasarkan spesifikasi baru.
+                </p>
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowInProgressStrategyModal(false)}
+                disabled={editSubmitting}
+              >
+                Kembali
+              </Button>
             </div>
           </div>
         </div>

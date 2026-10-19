@@ -19,6 +19,7 @@ class WorkItemCreate(WorkItemBase):
 class WorkItemUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    type: Optional[str] = None # epic, story, task, subtask, bug
     status: Optional[str] = None # backlog, ready, in_progress, in_review, done, blocked, cancelled
     priority: Optional[str] = None
     estimate_points: Optional[float] = None

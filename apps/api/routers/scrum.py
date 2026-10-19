@@ -105,6 +105,8 @@ def update_work_item(
         item.title = update_in.title.strip()
     if update_in.description is not None:
         item.description = update_in.description
+    if update_in.type is not None:
+        item.type = update_in.type
     if update_in.priority is not None:
         item.priority = update_in.priority
     if update_in.estimate_points is not None:
@@ -114,9 +116,11 @@ def update_work_item(
     if update_in.definition_of_done is not None:
         item.definition_of_done = update_in.definition_of_done
     if "assignee_agent_id" in update_in.model_fields_set:
-        item.assignee_agent_id = update_in.assignee_agent_id if update_in.assignee_agent_id else None
+        clean_assignee = update_in.assignee_agent_id.strip() if update_in.assignee_agent_id and update_in.assignee_agent_id.strip() else None
+        item.assignee_agent_id = clean_assignee
     if "sprint_id" in update_in.model_fields_set:
-        item.sprint_id = update_in.sprint_id if update_in.sprint_id else None
+        clean_sprint = update_in.sprint_id.strip() if update_in.sprint_id and update_in.sprint_id.strip() else None
+        item.sprint_id = clean_sprint
     if "blocker_reason" in update_in.model_fields_set:
         item.blocker_reason = update_in.blocker_reason
 

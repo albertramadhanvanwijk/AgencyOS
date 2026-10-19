@@ -118,27 +118,31 @@ function AgentModelSelector({
   isSurfaceSecondary = false,
   noCardWrapper = false,
 }: AgentModelSelectorProps) {
+  const [modelSearch, setModelSearch] = useState("");
+
   const currentProvider = activeLlms.find((l) => l.id === selectedProfileId) || defaultLLM;
   const currentTargetModel = currentProvider?.model || defaultLLM?.model || "gemini-3.8-flash";
+  const activeEffectiveModel = selectedModel || currentTargetModel;
+  const activeModelItem = catalog.find((c) => c.id === activeEffectiveModel) || catalog.find((c) => c.isMainForProvider) || catalog[0];
 
-  // Filter catalog by active tier
+  // Filter catalog by active tier and search term
   const filteredCatalog = useMemo(() => {
-    if (tierFilter === "all") return catalog;
-    return catalog.filter((c) => c.tier === tierFilter);
-  }, [catalog, tierFilter]);
-
-  // Grouped for <optgroup>
-  const groupedCatalog = useMemo(() => {
-    const groups: { [group: string]: ModelCatalogItem[] } = {};
-    catalog.forEach((item) => {
-      if (!groups[item.categoryGroup]) groups[item.categoryGroup] = [];
-      groups[item.categoryGroup].push(item);
-    });
-    return Object.entries(groups).map(([groupTitle, models]) => ({
-      groupTitle,
-      models,
-    }));
-  }, [catalog]);
+    let list = catalog;
+    if (tierFilter !== "all") {
+      list = list.filter((c) => c.tier === tierFilter);
+    }
+    if (modelSearch.trim()) {
+      const q = modelSearch.toLowerCase().trim();
+      list = list.filter(
+        (c) =>
+          c.id.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q) ||
+          c.description.toLowerCase().includes(q) ||
+          c.tierLabel.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [catalog, tierFilter, modelSearch]);
 
   const countFree = catalog.filter((c) => c.tier === "free").length;
   const countPro = catalog.filter((c) => c.tier === "pro").length;
@@ -197,96 +201,127 @@ function AgentModelSelector({
           </span>
         </div>
 
-        {/* Dropdown with Optgroups */}
-        <select
-          value={selectedModel}
-          onChange={(e) => onModelChange(e.target.value)}
-          className="w-full max-w-full min-w-0 block truncate h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-        >
-          <option value="">
-            {selectedProfileId
-              ? `Model Utama Provider (${currentTargetModel})`
-              : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
-          </option>
-          {groupedCatalog.map(({ groupTitle, models }) => (
-            <optgroup key={groupTitle} label={groupTitle}>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.id} [{m.tierLabel}]{m.isMainForProvider ? " ★ Utama" : ""}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        {/* Selected Model Preview Card */}
+        <div className="p-2 rounded bg-surface-light dark:bg-surface-dark border border-accent/40 shadow-xs flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2 min-w-0 flex-1">
+            <span className="w-2 h-2 rounded-full bg-accent shrink-0 animate-pulse" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-0.5">
+                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">Model Aktif:</span>
+                <span className="font-mono font-bold text-xs text-accent truncate">
+                  {activeEffectiveModel}
+                </span>
+                {activeModelItem && (
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${activeModelItem.badgeStyle}`}>
+                    {activeModelItem.tierLabel}
+                  </span>
+                )}
+                {selectedModel && (
+                  <span className="text-[9px] font-medium text-purple-600 dark:text-purple-400 bg-purple-500/10 px-1 rounded">
+                    Manual
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark truncate mt-0.5">
+                {activeModelItem?.description || "Model aktif untuk agen ini"}
+              </p>
+            </div>
+          </div>
+          {selectedModel && (
+            <button
+              type="button"
+              onClick={() => onModelChange("")}
+              className="text-[10px] text-textMuted-light dark:text-textMuted-dark hover:text-accent underline shrink-0 cursor-pointer"
+              title="Gunakan model default provider"
+            >
+              Reset Default
+            </button>
+          )}
+        </div>
 
         {/* Visual Model Catalog with Tier Filters */}
         <div className="space-y-1.5 pt-1 w-full min-w-0">
-          {/* Tier Tabs */}
-          <div className="flex items-center space-x-1 overflow-x-auto pb-1 text-[10px] w-full min-w-0">
-            <button
-              type="button"
-              onClick={() => onTierFilterChange("all")}
-              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
-                tierFilter === "all"
-                  ? "bg-accent text-white font-semibold"
-                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
-              }`}
-            >
-              Semua ({catalog.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => onTierFilterChange("free")}
-              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
-                tierFilter === "free"
-                  ? "bg-emerald-600 text-white font-semibold"
-                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
-              }`}
-            >
-              ⚡ Free Tier ({countFree})
-            </button>
-            <button
-              type="button"
-              onClick={() => onTierFilterChange("pro")}
-              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
-                tierFilter === "pro"
-                  ? "bg-blue-600 text-white font-semibold"
-                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
-              }`}
-            >
-              💎 Pro Tier ({countPro})
-            </button>
-            <button
-              type="button"
-              onClick={() => onTierFilterChange("preview")}
-              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
-                tierFilter === "preview"
-                  ? "bg-purple-600 text-white font-semibold"
-                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
-              }`}
-            >
-              🚀 Preview ({countPreview})
-            </button>
-            {countOpen > 0 && (
+          <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block">
+            Pilih model AI di bawah (klik kartu untuk memilih):
+          </span>
+
+          {/* Tier Tabs & Search */}
+          <div className="flex items-center justify-between gap-1.5 pb-0.5">
+            <div className="flex items-center space-x-1 overflow-x-auto text-[10px] min-w-0 flex-1">
               <button
                 type="button"
-                onClick={() => onTierFilterChange("open")}
+                onClick={() => onTierFilterChange("all")}
                 className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
-                  tierFilter === "open"
-                    ? "bg-amber-600 text-white font-semibold"
+                  tierFilter === "all"
+                    ? "bg-accent text-white font-semibold"
                     : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
                 }`}
               >
-                🌐 Open ({countOpen})
+                Semua ({catalog.length})
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => onTierFilterChange("free")}
+                className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                  tierFilter === "free"
+                    ? "bg-emerald-600 text-white font-semibold"
+                    : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+                }`}
+              >
+                ⚡ Free ({countFree})
+              </button>
+              <button
+                type="button"
+                onClick={() => onTierFilterChange("pro")}
+                className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                  tierFilter === "pro"
+                    ? "bg-blue-600 text-white font-semibold"
+                    : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+                }`}
+              >
+                💎 Pro ({countPro})
+              </button>
+              <button
+                type="button"
+                onClick={() => onTierFilterChange("preview")}
+                className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                  tierFilter === "preview"
+                    ? "bg-purple-600 text-white font-semibold"
+                    : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+                }`}
+              >
+                🚀 Preview ({countPreview})
+              </button>
+              {countOpen > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onTierFilterChange("open")}
+                  className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                    tierFilter === "open"
+                      ? "bg-amber-600 text-white font-semibold"
+                      : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+                  }`}
+                >
+                  🌐 Open ({countOpen})
+                </button>
+              )}
+            </div>
+
+            <div className="relative w-24 sm:w-28 shrink-0">
+              <input
+                type="text"
+                placeholder="Cari..."
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                className="w-full h-6 px-1.5 text-[10px] bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark placeholder:text-textMuted-light focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
           </div>
 
           {/* Cards List */}
-          <div className="space-y-1 max-h-44 overflow-y-auto pr-0.5 w-full min-w-0">
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5 w-full min-w-0">
             {filteredCatalog.map((item) => {
-              const isSelected =
-                selectedModel === item.id || (!selectedModel && item.isMainForProvider);
+              const isSelected = selectedModel === item.id || (!selectedModel && item.isMainForProvider);
               return (
                 <button
                   key={item.id}

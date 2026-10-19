@@ -1040,7 +1040,7 @@ export default function WorkforcePage() {
                   <th className="py-2.5 px-4">Lifecycle</th>
                   <th className="py-2.5 px-4">Qualification</th>
                   <th className="py-2.5 px-4">Model LLM</th>
-                  <th className="py-2.5 px-4 w-44">Concurrency</th>
+                  <th className="py-2.5 px-4 w-48">Concurrency Capacity</th>
                   <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1097,7 +1097,7 @@ export default function WorkforcePage() {
                         <CapacityIndicator
                           current={agent.current_concurrency}
                           max={agent.max_concurrency}
-                          showNumbers={true}
+                          variant="table"
                         />
                       </td>
                       <td className="py-3 px-4 text-right">

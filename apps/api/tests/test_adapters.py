@@ -95,3 +95,65 @@ def test_adapter_run_execution_via_endpoint(client):
     for log in logs:
         assert "sk-" not in log["message"]
 
+def test_extract_models_filtering():
+    live = LiveLLMEngineAdapter()
+    sample_payload = {
+        "data": [
+            {"id": "models/gemini-2.0-flash"},
+            {"id": "models/gemini-2.5-pro"},
+            {"id": "models/text-embedding-004"},
+            {"id": "models/whisper-1"},
+            {"id": "gpt-4o"},
+        ]
+    }
+    extracted = live._extract_models(sample_payload)
+    assert "gemini-2.0-flash" in extracted
+    assert "gemini-2.5-pro" in extracted
+    assert "gpt-4o" in extracted
+    assert "text-embedding-004" not in extracted
+    assert "whisper-1" not in extracted
+
+def test_health_check_two_stage_warning_when_model_restricted(monkeypatch):
+    import httpx
+
+    live = LiveLLMEngineAdapter()
+
+    # Mock httpx.get to return models list (API key valid)
+    def mock_get(url, *args, **kwargs):
+        class MockResp:
+            status_code = 200
+            text = "ok"
+            def json(self):
+                return {
+                    "data": [
+                        {"id": "gemini-2.0-flash"},
+                        {"id": "gemini-1.5-flash"}
+                    ]
+                }
+        return MockResp()
+
+    # Mock httpx.post to return 403 (Model requires Pro tier)
+    def mock_post(url, *args, **kwargs):
+        class MockResp:
+            status_code = 403
+            text = "The model 'gemini-2.5-pro' requires a Pro tier subscription."
+            def json(self):
+                return {"error": {"message": self.text}}
+        return MockResp()
+
+    monkeypatch.setattr(httpx, "get", mock_get)
+    monkeypatch.setattr(httpx, "post", mock_post)
+
+    result = live.health_check(
+        api_key="AIzaSyValidKeyExample",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        model="gemini-2.5-pro"
+    )
+
+    assert result["status"] == "warning"
+    assert result["api_key_valid"] is True
+    assert result["model_supported"] is False
+    assert "API Key VALID, namun model 'gemini-2.5-pro' tidak dapat digunakan" in result["message"]
+    assert "gemini-2.0-flash" in result["available_models"]
+
+

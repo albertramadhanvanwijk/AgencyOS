@@ -37,6 +37,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
         )
         self._base_url = (base_url or os.environ.get("LIVE_ENGINE_BASE_URL") or settings.LIVE_ENGINE_BASE_URL).rstrip("/")
         self._model = model or os.environ.get("LIVE_ENGINE_MODEL") or settings.LIVE_ENGINE_MODEL
+        self._discovered_models: list[str] = []
 
     @property
     def adapter_name(self) -> str:
@@ -72,7 +73,85 @@ class LiveLLMEngineAdapter(EngineAdapter):
         if model is not None:
             self._model = model.strip()
 
+    def _extract_models(self, data: Any) -> list[str]:
+        raw_ids: list[str] = []
+        if isinstance(data, dict):
+            if "data" in data and isinstance(data["data"], list):
+                for item in data["data"]:
+                    if isinstance(item, dict) and "id" in item:
+                        mid = str(item["id"]).strip()
+                        if mid.startswith("models/"):
+                            mid = mid[7:]
+                        raw_ids.append(mid)
+            elif "models" in data and isinstance(data["models"], list):
+                for item in data["models"]:
+                    if isinstance(item, dict):
+                        mid = str(item.get("name") or item.get("id") or "").strip()
+                        if mid.startswith("models/"):
+                            mid = mid[7:]
+                        if mid:
+                            raw_ids.append(mid)
+
+        # Exclude non-text/embedding/audio/tts/imagen models
+        excluded_keywords = [
+            "embedding", "embed", "tts", "whisper", "dall-e", "imagen", 
+            "moderation", "realtime", "audio", "vision-preview", "bilingual",
+            "search", "classifier"
+        ]
+        
+        filtered = [
+            m for m in raw_ids
+            if not any(ex in m.lower() for ex in excluded_keywords)
+        ]
+        
+        # Sort so modern/popular models appear first
+        def model_priority(name: str) -> int:
+            n = name.lower()
+            if "gemini-2.0-flash" in n:
+                return 0
+            if "gemini-2.5-pro" in n:
+                return 1
+            if "gemini-2.5-flash" in n:
+                return 2
+            if "gemini-1.5-pro" in n:
+                return 3
+            if "gemini-1.5-flash" in n:
+                return 4
+            if "gpt-4o-mini" in n:
+                return 5
+            if "gpt-4o" in n:
+                return 6
+            if "claude-3-5" in n:
+                return 7
+            if "claude-3-7" in n:
+                return 8
+            if "llama-3.3" in n:
+                return 9
+            if "qwen-2.5-coder" in n:
+                return 10
+            return 50
+
+        filtered.sort(key=model_priority)
+        if filtered:
+            self._discovered_models = filtered
+        return filtered[:30]
+
     def get_capabilities(self) -> Dict[str, Any]:
+        default_models = [
+            "gemini-2.0-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
+            "gpt-4o-mini",
+            "gpt-4o",
+            "claude-3-5-sonnet",
+            "claude-3-7-sonnet",
+            "llama-3.3-70b",
+            "qwen-2.5-coder-32b",
+            "mistral-small"
+        ]
+        combined_models = self._discovered_models + [m for m in default_models if m not in self._discovered_models]
         return {
             "diff_emission": True,
             "test_runner": True,
@@ -80,20 +159,8 @@ class LiveLLMEngineAdapter(EngineAdapter):
             "quality_gates": True,
             "interactive_shell": False,
             "simulated": False,
-            "supported_models": [
-                "gemini-2.0-flash",
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-1.5-pro",
-                "gemini-1.5-flash",
-                "gpt-4o-mini",
-                "gpt-4o",
-                "claude-3-5-sonnet",
-                "claude-3-7-sonnet",
-                "llama-3.3-70b",
-                "qwen-2.5-coder-32b",
-                "mistral-small"
-            ],
+            "supported_models": combined_models,
+            "available_models": self._discovered_models,
             "current_base_url": self.base_url,
             "current_model": self.model,
             "is_configured": bool(self.api_key),
@@ -126,11 +193,15 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 try:
                     resp = httpx.get(f"{url}/models", timeout=4.0)
                     if resp.status_code == 200:
+                        discovered = self._extract_models(resp.json())
                         return {
                             "status": "verified",
                             "adapter": self.adapter_name,
                             "simulated": False,
                             "model": selected_model,
+                            "api_key_valid": True,
+                            "model_supported": True,
+                            "available_models": discovered,
                             "message": f"Koneksi ke local LLM endpoint ({url}) berhasil diverifikasi."
                         }
                 except Exception:
@@ -140,10 +211,14 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 "status": "not_configured",
                 "adapter": self.adapter_name,
                 "simulated": False,
+                "model": selected_model,
+                "api_key_valid": False,
+                "model_supported": False,
+                "available_models": [],
                 "message": "API key belum dikonfigurasi. Masukkan API key di Settings untuk mengaktifkan live execution."
             }
 
-        # Test auth with a lightweight models endpoint call
+        # Step 1: Verify API Key with /models
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
@@ -154,35 +229,15 @@ class LiveLLMEngineAdapter(EngineAdapter):
 
         try:
             resp = httpx.get(f"{url}/models", headers=headers, params=params if params else None, timeout=8.0)
-            if resp.status_code == 200:
-                is_gemini = "gemini" in selected_model.lower() or "generativelanguage" in url
-                provider_label = f"Google Gemini ({selected_model})" if is_gemini else f"Live Engine ({selected_model})"
-                return {
-                    "status": "verified",
-                    "adapter": self.adapter_name,
-                    "simulated": False,
-                    "model": selected_model,
-                    "message": f"Koneksi ke {provider_label} berhasil diverifikasi."
-                }
-            elif resp.status_code in (401, 403):
-                return {
-                    "status": "error",
-                    "adapter": self.adapter_name,
-                    "simulated": False,
-                    "message": "Autentikasi gagal (Invalid API Key). Periksa kembali API key Anda."
-                }
-            else:
-                return {
-                    "status": "error",
-                    "adapter": self.adapter_name,
-                    "simulated": False,
-                    "message": f"HTTP {resp.status_code}: {resp.text[:120]}"
-                }
         except httpx.ConnectError:
             return {
                 "status": "error",
                 "adapter": self.adapter_name,
                 "simulated": False,
+                "model": selected_model,
+                "api_key_valid": False,
+                "model_supported": False,
+                "available_models": [],
                 "message": f"Tidak dapat terhubung ke endpoint {url}. Pastikan server menyala dan URL benar."
             }
         except Exception as exc:
@@ -190,7 +245,128 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 "status": "error",
                 "adapter": self.adapter_name,
                 "simulated": False,
+                "model": selected_model,
+                "api_key_valid": False,
+                "model_supported": False,
+                "available_models": [],
                 "message": f"Pemeriksaan koneksi gagal: {str(exc)}"
+            }
+
+        if resp.status_code in (401, 403):
+            return {
+                "status": "error",
+                "adapter": self.adapter_name,
+                "simulated": False,
+                "model": selected_model,
+                "api_key_valid": False,
+                "model_supported": False,
+                "available_models": [],
+                "message": "Autentikasi gagal (Invalid API Key). Periksa kembali API key Anda."
+            }
+        elif resp.status_code != 200:
+            return {
+                "status": "error",
+                "adapter": self.adapter_name,
+                "simulated": False,
+                "model": selected_model,
+                "api_key_valid": False,
+                "model_supported": False,
+                "available_models": [],
+                "message": f"HTTP {resp.status_code}: {resp.text[:120]}"
+            }
+
+        # API Key is VALID!
+        try:
+            available_models = self._extract_models(resp.json())
+        except Exception:
+            available_models = []
+
+        # Step 2: Validate specific selected model
+        try:
+            chat_resp = httpx.post(
+                f"{url}/chat/completions",
+                headers=headers,
+                params=params if params else None,
+                json={
+                    "model": selected_model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1
+                },
+                timeout=7.0
+            )
+
+            if chat_resp.status_code == 200:
+                is_gemini = "gemini" in selected_model.lower() or "generativelanguage" in url
+                provider_label = f"Google Gemini ({selected_model})" if is_gemini else f"Live Engine ({selected_model})"
+                return {
+                    "status": "verified",
+                    "adapter": self.adapter_name,
+                    "simulated": False,
+                    "model": selected_model,
+                    "api_key_valid": True,
+                    "model_supported": True,
+                    "available_models": available_models,
+                    "message": f"API Key valid & model '{selected_model}' ({provider_label}) berhasil diverifikasi siap digunakan."
+                }
+            elif chat_resp.status_code in (400, 403, 404, 422):
+                err_text = chat_resp.text
+                reason = "Akses ditolak"
+                if "not found" in err_text.lower() or "does not exist" in err_text.lower():
+                    reason = "Model tidak ditemukan atau belum dirilis untuk tier akun ini"
+                elif "permission" in err_text.lower() or "pro" in err_text.lower() or "tier" in err_text.lower() or "billing" in err_text.lower():
+                    reason = "Model memerlukan tier Pro / akun berbayar"
+                elif "quota" in err_text.lower() or "rate" in err_text.lower():
+                    reason = "Quota limit untuk model ini telah habis"
+                else:
+                    reason = f"Provider response ({chat_resp.status_code}): {err_text[:80]}"
+
+                return {
+                    "status": "warning",
+                    "adapter": self.adapter_name,
+                    "simulated": False,
+                    "model": selected_model,
+                    "api_key_valid": True,
+                    "model_supported": False,
+                    "available_models": available_models,
+                    "message": f"API Key VALID, namun model '{selected_model}' tidak dapat digunakan ({reason}). Silakan pilih salah satu model yang tersedia untuk akun Anda."
+                }
+            else:
+                return {
+                    "status": "warning",
+                    "adapter": self.adapter_name,
+                    "simulated": False,
+                    "model": selected_model,
+                    "api_key_valid": True,
+                    "model_supported": False,
+                    "available_models": available_models,
+                    "message": f"API Key valid, namun pengujian model '{selected_model}' menghasilkan HTTP {chat_resp.status_code}: {chat_resp.text[:90]}"
+                }
+        except httpx.TimeoutException:
+            model_in_list = any(selected_model.lower() in m.lower() for m in available_models)
+            return {
+                "status": "verified" if model_in_list else "warning",
+                "adapter": self.adapter_name,
+                "simulated": False,
+                "model": selected_model,
+                "api_key_valid": True,
+                "model_supported": model_in_list,
+                "available_models": available_models,
+                "message": (
+                    f"API Key valid dan model '{selected_model}' terdaftar di akun Anda."
+                    if model_in_list else
+                    f"API Key valid, namun verifikasi model '{selected_model}' mengalami timeout. Silakan pastikan model aktif."
+                )
+            }
+        except Exception:
+            return {
+                "status": "verified",
+                "adapter": self.adapter_name,
+                "simulated": False,
+                "model": selected_model,
+                "api_key_valid": True,
+                "model_supported": True,
+                "available_models": available_models,
+                "message": f"API Key valid. Model '{selected_model}' terdaftar."
             }
 
     def cancel_run(self, run: ExecutionRun, db: Session) -> bool:

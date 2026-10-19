@@ -18,7 +18,8 @@ import {
   EyeOff,
   RefreshCw,
   Sliders,
-  Sparkles
+  Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 
 interface SystemStatus {
@@ -53,10 +54,13 @@ interface AdapterInfo {
 }
 
 interface ConnectionTestResult {
-  status: "verified" | "not_configured" | "error";
+  status: "verified" | "not_configured" | "error" | "warning";
   message: string;
   model?: string;
   adapter?: string;
+  api_key_valid?: boolean;
+  model_supported?: boolean;
+  available_models?: string[];
 }
 
 export default function SettingsPage() {
@@ -70,6 +74,7 @@ export default function SettingsPage() {
   const [model, setModel] = useState("gemini-2.0-flash");
   const [defaultAdapter, setDefaultAdapter] = useState("MockEngineAdapter");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
 
   // Action states
   const [testingConnection, setTestingConnection] = useState(false);
@@ -105,6 +110,9 @@ export default function SettingsPage() {
           if (liveAdapter.capabilities.current_model) {
             setModel(liveAdapter.capabilities.current_model);
           }
+          if (liveAdapter.capabilities.supported_models && liveAdapter.capabilities.supported_models.length > 0) {
+            setDiscoveredModels(liveAdapter.capabilities.supported_models);
+          }
         }
       }
     } catch {
@@ -136,6 +144,9 @@ export default function SettingsPage() {
 
       const data: ConnectionTestResult = await res.json();
       setTestResult(data);
+      if (data.available_models && data.available_models.length > 0) {
+        setDiscoveredModels(data.available_models);
+      }
     } catch (err: unknown) {
       setTestResult({
         status: "error",
@@ -329,25 +340,28 @@ export default function SettingsPage() {
                 className="w-full text-xs font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
               />
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
-                <span>Model Presets:</span>
-                {[
-                  "gemini-2.0-flash",
-                  "gemini-2.5-pro",
-                  "gemini-2.5-flash",
-                  "gemini-1.5-pro",
-                  "gpt-4o-mini",
-                  "gpt-4o",
-                  "claude-3-5-sonnet",
-                  "qwen-2.5-coder-32b",
-                ].map((m) => (
+                <span>{discoveredModels.length > 0 ? "Model Tersedia (Auto-Discovered):" : "Model Presets:"}</span>
+                {(discoveredModels.length > 0
+                  ? discoveredModels
+                  : [
+                      "gemini-2.0-flash",
+                      "gemini-2.5-pro",
+                      "gemini-2.5-flash",
+                      "gemini-1.5-pro",
+                      "gpt-4o-mini",
+                      "gpt-4o",
+                      "claude-3-5-sonnet",
+                      "qwen-2.5-coder-32b",
+                    ]
+                ).map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setModel(m)}
-                    className={`px-1.5 py-0.5 rounded border ${
+                    className={`px-1.5 py-0.5 rounded border transition-colors ${
                       model === m
                         ? "bg-accent/15 text-accent border-accent/40 font-medium"
-                        : "hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark"
+                        : "hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark"
                     }`}
                   >
                     {m}
@@ -411,23 +425,60 @@ export default function SettingsPage() {
             {/* Test Connection Banner */}
             {testResult && (
               <div
-                className={`p-3 rounded border text-xs flex items-start space-x-2.5 ${
+                className={`p-3.5 rounded border text-xs flex flex-col space-y-2.5 ${
                   testResult.status === "verified"
                     ? "bg-[#16794B]/10 border-[#16794B]/30 text-status-success dark:text-[#209961]"
-                    : testResult.status === "not_configured"
+                    : testResult.status === "warning"
                     ? "bg-[#9A6700]/10 border-[#9A6700]/30 text-status-warning dark:text-[#C78B14]"
+                    : testResult.status === "not_configured"
+                    ? "bg-surfaceSecondary-light border-borderBase-light text-textMuted-light dark:bg-surfaceSecondary-dark dark:border-borderBase-dark dark:text-textMuted-dark"
                     : "bg-[#C23934]/10 border-[#C23934]/30 text-status-danger dark:text-[#D94843]"
                 }`}
               >
-                {testResult.status === "verified" ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                )}
-                <div>
-                  <div className="font-semibold capitalize">Status: {testResult.status}</div>
-                  <div>{testResult.message}</div>
+                <div className="flex items-start space-x-2.5">
+                  {testResult.status === "verified" ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : testResult.status === "warning" ? (
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <div className="font-semibold">
+                      {testResult.status === "verified" && "✓ Koneksi & Model Terverifikasi (Siap Digunakan)"}
+                      {testResult.status === "warning" && "⚠️ API Key Valid — Model Terbatas / Perlu Tier Lain"}
+                      {testResult.status === "error" && "✕ Koneksi Gagal (Periksa API Key / Endpoint)"}
+                      {testResult.status === "not_configured" && "Informasi: Belum Dikonfigurasi"}
+                    </div>
+                    <div className="text-[11px] leading-relaxed opacity-90">{testResult.message}</div>
+                  </div>
                 </div>
+
+                {/* Available models picker if present */}
+                {testResult.available_models && testResult.available_models.length > 0 && (
+                  <div className="pt-2 border-t border-current/20 space-y-1.5">
+                    <div className="text-[11px] font-semibold flex items-center justify-between">
+                      <span>Pilih model yang tersedia untuk API Key Anda:</span>
+                      <span className="font-mono text-[10px] opacity-75">{testResult.available_models.length} model aktif</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto pt-1">
+                      {testResult.available_models.map((availModel) => (
+                        <button
+                          key={availModel}
+                          type="button"
+                          onClick={() => setModel(availModel)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${
+                            model === availModel
+                              ? "bg-accent text-white border-accent shadow-xs"
+                              : "bg-surface-light dark:bg-surface-dark border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent"
+                          }`}
+                        >
+                          {availModel}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

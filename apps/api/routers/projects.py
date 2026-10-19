@@ -637,6 +637,7 @@ class SprintApproveStartIn(BaseModel):
 
 class SprintCompleteReviewIn(BaseModel):
     review_notes: Optional[str] = None
+    move_unfinished_to: Optional[str] = None
 
 class WorkItemRevisionIn(BaseModel):
     revision_notes: str
@@ -704,8 +705,9 @@ def complete_review_sprint(
     Transitions next sprint to 'pending_approval' or marks project as completed.
     """
     review_notes = payload.review_notes if payload else None
+    move_unfinished_to = payload.move_unfinished_to if payload else None
     try:
-        return pm_assistant.complete_review_sprint(project_id, sprint_id, review_notes, db)
+        return pm_assistant.complete_review_sprint(project_id, sprint_id, review_notes, db, move_unfinished_to)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

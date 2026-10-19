@@ -495,7 +495,14 @@ class PMAssistantService:
         }
 
     @classmethod
-    def complete_review_sprint(cls, project_id: str, sprint_id: str, review_notes: Optional[str], db: Session) -> Dict[str, Any]:
+    def complete_review_sprint(
+        cls,
+        project_id: str,
+        sprint_id: str,
+        review_notes: Optional[str],
+        db: Session,
+        move_unfinished_to: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Completes an active sprint with a structured Scrum Retrospective.
         Checks if next sprint exists or triggers project completion.
@@ -541,18 +548,43 @@ class PMAssistantService:
         project_completed = False
         if next_sprint:
             next_sprint.status = "pending_approval"
-            # Rollover any unfinished items (not done) to the next sprint
-            unfinished_items = db.query(WorkItem).filter(
-                WorkItem.sprint_id == sprint.id,
-                WorkItem.status != "done"
-            ).all()
-            if unfinished_items:
+
+        # Relocate any unfinished items (not done)
+        unfinished_items = db.query(WorkItem).filter(
+            WorkItem.sprint_id == sprint.id,
+            WorkItem.status != "done"
+        ).all()
+        if unfinished_items:
+            dest = move_unfinished_to
+            if dest == "backlog" or (dest is None and not next_sprint):
                 for u_item in unfinished_items:
-                    u_item.sprint_id = next_sprint.id
-                    u_item.status = "backlog"
+                    u_item.sprint_id = None
+                    if u_item.status in ["in_progress", "in_review", "blocked"]:
+                        u_item.status = "ready"
                 retrospective["action_items"].append(
-                    f"{len(unfinished_items)} user story belum selesai dialihkan (rollover) ke {next_sprint.name}."
+                    f"{len(unfinished_items)} user story belum selesai dikembalikan ke Backlog."
                 )
+            else:
+                target = None
+                if dest and dest != "backlog":
+                    target = db.query(Sprint).filter(Sprint.id == dest, Sprint.project_id == project_id).first()
+                if not target:
+                    target = next_sprint
+                if target:
+                    for u_item in unfinished_items:
+                        u_item.sprint_id = target.id
+                        u_item.status = "backlog"
+                    retrospective["action_items"].append(
+                        f"{len(unfinished_items)} user story belum selesai dialihkan (rollover) ke {target.name}."
+                    )
+                else:
+                    for u_item in unfinished_items:
+                        u_item.sprint_id = None
+                        if u_item.status in ["in_progress", "in_review", "blocked"]:
+                            u_item.status = "ready"
+                    retrospective["action_items"].append(
+                        f"{len(unfinished_items)} user story belum selesai dikembalikan ke Backlog."
+                    )
         else:
             # All sprints completed! Check remaining backlog
             remaining_backlog = db.query(WorkItem).filter(

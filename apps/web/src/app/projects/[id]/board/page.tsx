@@ -49,6 +49,7 @@ import {
   Award,
   Send,
   MessageSquare,
+  History,
 } from "lucide-react";
 
 interface AgentRecommendation {
@@ -301,10 +302,16 @@ export default function ScrumBoardPage({
   const [assigningAgentId, setAssigningAgentId] = useState<string | null>(null);
   const [showRecsSection, setShowRecsSection] = useState(false);
 
-  // Sprint Completion State
+  // Sprint Completion & Retrospective State
   const [isCompleteSprintModalOpen, setIsCompleteSprintModalOpen] = useState(false);
   const [unfinishedDestination, setUnfinishedDestination] = useState<string>("backlog");
   const [sprintSubmitting, setSprintSubmitting] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [retroResult, setRetroResult] = useState<any>(null);
+
+  // Sprint History & Retrospective View State
+  const [isSprintHistoryModalOpen, setIsSprintHistoryModalOpen] = useState(false);
+  const [selectedSprintForHistory, setSelectedSprintForHistory] = useState<Sprint | null>(null);
 
   // Execution Run State
   const [activeRun, setActiveRun] = useState<ExecutionRun | null>(null);
@@ -344,11 +351,7 @@ export default function ScrumBoardPage({
   const [isSprintApprovalOpen, setIsSprintApprovalOpen] = useState(false);
   const [approvingSprint, setApprovingSprint] = useState(false);
 
-  // Sprint Review & Retro State
-  const [isRetroModalOpen, setIsRetroModalOpen] = useState(false);
-  const [retroSubmitting, setRetroSubmitting] = useState(false);
-  const [reviewNotes, setReviewNotes] = useState("");
-  const [retroResult, setRetroResult] = useState<any>(null);
+
 
   // Revision Request State
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
@@ -518,27 +521,6 @@ export default function ScrumBoardPage({
     }
   };
 
-  const handleCompleteReviewSprint = async (sprintId: string) => {
-    try {
-      setRetroSubmitting(true);
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintId}/complete-review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ review_notes: reviewNotes }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Gagal menyelesaikan review sprint.");
-      }
-      const data = await res.json();
-      setRetroResult(data);
-      await fetchBoardData();
-    } catch (err: any) {
-      alert(`Retro Error: ${err.message}`);
-    } finally {
-      setRetroSubmitting(false);
-    }
-  };
 
   const handleRequestRevision = async () => {
     if (!revisionTargetItem || !revisionNotes.trim()) return;
@@ -881,28 +863,34 @@ export default function ScrumBoardPage({
   };
 
   const handleCompleteSprint = async () => {
-    if (!sprintCapacity?.sprint_id) return;
+    const targetSprintId = sprintCapacity?.sprint_id || activeSprint?.id;
+    if (!targetSprintId) return;
     try {
       setSprintSubmitting(true);
       setTransitionError(null);
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintCapacity.sprint_id}/status`, {
-        method: "PATCH",
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${targetSprintId}/complete-review`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: "completed",
+          review_notes: reviewNotes.trim() || undefined,
           move_unfinished_to: unfinishedDestination,
         }),
       });
 
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.detail || "Gagal menyelesaikan sprint");
+        throw new Error(errJson.detail || "Gagal menyelesaikan sprint & evaluasi retro");
       }
 
-      setIsCompleteSprintModalOpen(false);
+      const data = await res.json();
+      setRetroResult(data);
       await fetchBoardData();
     } catch (err: unknown) {
-      if (err instanceof Error) setTransitionError(err.message);
+      if (err instanceof Error) {
+        setTransitionError(err.message);
+      } else {
+        setTransitionError("Gagal menyelesaikan sprint.");
+      }
     } finally {
       setSprintSubmitting(false);
     }
@@ -1167,6 +1155,22 @@ export default function ScrumBoardPage({
               Refresh
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const target =
+                  sprints.find((s) => s.id === sprintCapacity?.sprint_id) ||
+                  sprints.find((s) => s.status === "completed") ||
+                  sprints[0] ||
+                  null;
+                setSelectedSprintForHistory(target);
+                setIsSprintHistoryModalOpen(true);
+              }}
+              leftIcon={<History className="w-3.5 h-3.5 text-accent" />}
+            >
+              Riwayat Sprint & Retro
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               onClick={() => {
@@ -1327,7 +1331,8 @@ export default function ScrumBoardPage({
             onClick={() => {
               setReviewNotes("");
               setRetroResult(null);
-              setIsRetroModalOpen(true);
+              setTransitionError(null);
+              setIsCompleteSprintModalOpen(true);
             }}
             leftIcon={<Award className="w-3.5 h-3.5 text-accent" />}
           >
@@ -1487,15 +1492,34 @@ export default function ScrumBoardPage({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setIsCompleteSprintModalOpen(true)}
-                  leftIcon={<CheckCircle className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setReviewNotes("");
+                    setRetroResult(null);
+                    setTransitionError(null);
+                    setIsCompleteSprintModalOpen(true);
+                  }}
+                  leftIcon={<CheckCircle className="w-3.5 h-3.5 text-status-success" />}
                 >
                   Selesaikan Sprint
                 </Button>
               ) : sprintCapacity.sprint_status === "completed" ? (
-                <div className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-mono">
-                  <CheckCircle2 className="w-3 h-3 text-status-success" />
-                  <span>Arsip Sprint</span>
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1 px-2.5 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-mono">
+                    <CheckCircle2 className="w-3 h-3 text-status-success" />
+                    <span>Arsip Sprint</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const sp = sprints.find((s) => s.id === sprintCapacity.sprint_id) || null;
+                      setSelectedSprintForHistory(sp);
+                      setIsSprintHistoryModalOpen(true);
+                    }}
+                    leftIcon={<Award className="w-3.5 h-3.5 text-accent" />}
+                  >
+                    Lihat Review & Retro
+                  </Button>
                 </div>
               ) : sprintCapacity.sprint_status === "pending_approval" ? (
                 <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[11px] font-medium font-mono">
@@ -3335,94 +3359,446 @@ export default function ScrumBoardPage({
         </div>
       )}
 
-      {/* Complete Sprint Modal */}
-      {isCompleteSprintModalOpen && sprintCapacity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-lg w-full p-5 space-y-4 shadow-xl">
+      {/* Unified Complete Sprint & Review Retrospective Modal */}
+      {isCompleteSprintModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in">
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div>
-                <h3 className="text-base font-semibold flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-accent" />
-                  <span>Selesaikan {sprintCapacity.sprint_name || "Sprint"}</span>
-                </h3>
-                <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                  Tinjau pencapaian sprint, evaluasi velocity, dan tentukan kelanjutan backlog.
-                </p>
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-status-success/15 text-status-success flex items-center justify-center font-bold">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    {retroResult ? "Sprint Retrospective & Delivery Sign-Off" : `Selesaikan Sprint: ${sprintCapacity?.sprint_name || activeSprint?.name || "Sprint"}`}
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    {retroResult ? "Hasil evaluasi Scrum otomatis oleh Dewi Lestari" : "Tinjau pencapaian sprint, feedback evaluasi, dan Scrum Retrospective"}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsCompleteSprintModalOpen(false)}
+                onClick={() => {
+                  setIsCompleteSprintModalOpen(false);
+                  setRetroResult(null);
+                  setTransitionError(null);
+                }}
                 className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Sprint Outcome Summary */}
-            <div className="p-3.5 rounded-md bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-2 text-xs">
-              <div className="flex items-center justify-between font-medium">
-                <span className="text-textMuted-light dark:text-textMuted-dark">Total Delivered Points:</span>
-                <span className="font-mono font-bold text-status-success text-sm">
-                  {sprintCapacity.completed_points} / {sprintCapacity.total_capacity_points} SP
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60">
-                <div className="flex items-center space-x-1.5">
-                  <span className="w-2 h-2 rounded-full bg-status-success" />
-                  <span>
-                    Task Selesai (Done):{" "}
-                    <strong>{items.filter((i) => i.status === "done").length}</strong>
-                  </span>
+            {retroResult ? (
+              /* Retrospective Result View */
+              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                <div className="p-3 rounded-lg bg-status-success/10 border border-status-success/30 flex items-center gap-2 text-status-success">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold">{retroResult.message}</span>
                 </div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="w-2 h-2 rounded-full bg-status-warning" />
-                  <span>
-                    Belum Selesai:{" "}
-                    <strong>{items.filter((i) => i.status !== "done").length}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
 
-            {/* Unfinished Issues Destination */}
-            {items.some((i) => i.status !== "done") && (
-              <div className="space-y-2 p-3 rounded-md bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-xs">
-                <label className="font-medium block text-textPrimary-light dark:text-textPrimary-dark">
-                  Pindahkan task yang belum selesai ke:
-                </label>
-                <select
-                  value={unfinishedDestination}
-                  onChange={(e) => setUnfinishedDestination(e.target.value)}
-                  className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
-                >
-                  <option value="backlog">Backlog (Default)</option>
-                  {sprints
-                    .filter((s) => s.id !== sprintCapacity?.sprint_id && (s.status === "planning" || s.status === "pending_approval"))
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.status === "pending_approval" ? "Pending Approval" : "Planning"})
-                      </option>
-                    ))}
-                </select>
-                <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                  Task yang belum &apos;Done&apos; akan dialihkan otomatis tanpa kehilangan riwayat progress agen.
-                </p>
+                {retroResult.retrospective && (
+                  <div className="space-y-3">
+                    {/* What Went Well */}
+                    <div className="p-3.5 rounded-lg border border-status-success/30 bg-status-success/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-status-success">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Pencapaian Positif (What Went Well):</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.went_well?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Bottlenecks */}
+                    <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Kendala & Bottlenecks:</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.bottlenecks?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Action Items */}
+                    <div className="p-3.5 rounded-lg border border-accent/30 bg-accent/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-accent">
+                        <Sparkles className="w-4 h-4" />
+                        <span>Rekomendasi Tindakan untuk Sprint Berikutnya:</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.action_items?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setIsCompleteSprintModalOpen(false);
+                      setRetroResult(null);
+                    }}
+                  >
+                    Tutup & Kembali ke Board
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* Review Form View */
+              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                {(() => {
+                  const targetSprintId = sprintCapacity?.sprint_id || activeSprint?.id;
+                  const sprintItems = items.filter((i) => i.sprint_id === targetSprintId);
+                  const doneItems = sprintItems.filter((i) => i.status === "done");
+                  const remainingItems = sprintItems.filter((i) => i.status !== "done");
+
+                  return (
+                    <>
+                      {/* Sprint Delivery Summary */}
+                      <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark grid grid-cols-2 gap-3 text-center">
+                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
+                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
+                            Stories Selesai (Done)
+                          </span>
+                          <span className="text-xl font-bold font-mono text-status-success">
+                            {doneItems.length} / {sprintItems.length}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
+                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
+                            Stories Belum Selesai
+                          </span>
+                          <span className="text-xl font-bold font-mono text-status-warning">
+                            {remainingItems.length}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Unfinished Issues Destination */}
+                      {remainingItems.length > 0 && (
+                        <div className="space-y-2 p-3 rounded-md bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-xs">
+                          <label className="font-medium block text-textPrimary-light dark:text-textPrimary-dark">
+                            Pindahkan {remainingItems.length} user story yang belum selesai ke:
+                          </label>
+                          <select
+                            value={unfinishedDestination}
+                            onChange={(e) => setUnfinishedDestination(e.target.value)}
+                            className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
+                          >
+                            <option value="backlog">Backlog (Default)</option>
+                            {sprints
+                              .filter((s) => s.id !== targetSprintId && (s.status === "planning" || s.status === "pending_approval"))
+                              .map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name} ({s.status === "pending_approval" ? "Pending Approval" : "Planning"})
+                                </option>
+                              ))}
+                          </select>
+                          <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                            Task yang belum &apos;Done&apos; akan dialihkan otomatis tanpa kehilangan riwayat progress agen.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Evaluasi Otomatis Dewi Lestari */}
+                      <div className="p-3 rounded-lg border border-accent/20 bg-accent/5 dark:bg-accent/10 space-y-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        <p className="font-semibold flex items-center gap-1.5 text-accent">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Evaluasi Otomatis oleh Dewi Lestari (Scrum Master)</span>
+                        </p>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                          Saat sprint diselesaikan, Dewi Lestari akan menghitung velocity akhir tim, mengagregasi performa agen, serta menyusun catatan Retrospective (Went Well, Bottlenecks, dan Action Items).
+                        </p>
+                      </div>
+
+                      {/* Review Notes Input */}
+                      <div className="space-y-1.5">
+                        <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                          Catatan Evaluasi / Feedback Anda (Opsional):
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={reviewNotes}
+                          onChange={(e) => setReviewNotes(e.target.value)}
+                          placeholder="Contoh: Implementasi arsitektur dan fungsional sudah sesuai kriteria penerimaan. Pada sprint berikutnya tingkatkan coverage automated testing..."
+                          className="w-full p-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
+                        />
+                      </div>
+
+                      {transitionError && (
+                        <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs flex items-center space-x-2">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>{transitionError}</span>
+                        </div>
+                      )}
+
+                      {/* Modal Actions */}
+                      <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsCompleteSprintModalOpen(false);
+                            setTransitionError(null);
+                          }}
+                          disabled={sprintSubmitting}
+                        >
+                          Batal
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={handleCompleteSprint}
+                          isLoading={sprintSubmitting}
+                          leftIcon={<Award className="w-3.5 h-3.5" />}
+                        >
+                          Selesaikan Sprint & Buat Retro →
+                        </Button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
+          </div>
+        </div>
+      )}
 
-            {/* Modal Actions */}
-            <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
-              <Button size="sm" variant="outline" onClick={() => setIsCompleteSprintModalOpen(false)}>
-                Batal
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleCompleteSprint}
-                isLoading={sprintSubmitting}
-                leftIcon={<CheckCircle className="w-3.5 h-3.5" />}
+      {/* Sprint History & Retrospective View Modal */}
+      {isSprintHistoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-3xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-accent/15 text-accent flex items-center justify-center font-bold">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-2">
+                    <span>Riwayat Sprint & Retrospektif</span>
+                    <span className="text-[11px] font-normal text-textMuted-light dark:text-textMuted-dark">
+                      ({sprints.length} Total Sprints)
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Tinjau evaluasi Scrum, pencapaian tim, dan riwayat retrospektif tiap sprint proyek {project?.key}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSprintHistoryModalOpen(false)}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
               >
-                Selesaikan Sprint
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Sprints Horizontal Selector Bar */}
+            <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-thin">
+              {sprints.map((s) => {
+                const isSelected = (selectedSprintForHistory?.id || sprints[0]?.id) === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSprintForHistory(s)}
+                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                      isSelected
+                        ? "bg-accent/10 border-accent/40 text-accent font-semibold shadow-xs"
+                        : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${
+                      s.status === "completed"
+                        ? "bg-status-success"
+                        : s.status === "active"
+                        ? "bg-status-success animate-pulse"
+                        : s.status === "pending_approval"
+                        ? "bg-status-warning"
+                        : "bg-textMuted-light"
+                    }`} />
+                    <span>{s.name}</span>
+                    <span className="text-[10px] uppercase font-mono px-1 rounded bg-black/10 dark:bg-white/10">
+                      {s.status === "completed" ? "Selesai" : s.status === "active" ? "Aktif" : "Planning"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selected Sprint Content */}
+            {(() => {
+              const currentSprint = selectedSprintForHistory || sprints[0];
+              if (!currentSprint) {
+                return (
+                  <div className="py-12 text-center text-textMuted-light dark:text-textMuted-dark text-xs">
+                    Belum ada sprint yang terdaftar pada project ini.
+                  </div>
+                );
+              }
+
+              const sprintStories = items.filter((i) => i.sprint_id === currentSprint.id);
+              const doneStories = sprintStories.filter((i) => i.status === "done");
+              const retro = currentSprint.retrospective;
+
+              return (
+                <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                  {/* Sprint Meta Card */}
+                  <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-bold text-sm text-textPrimary-light dark:text-textPrimary-dark">
+                            {currentSprint.name}
+                          </h4>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                            currentSprint.status === "completed"
+                              ? "bg-status-success/20 text-status-success border border-status-success/30"
+                              : currentSprint.status === "active"
+                              ? "bg-status-success/15 text-status-success border border-status-success/20"
+                              : "bg-surface-light dark:bg-surface-dark text-textMuted-light border border-borderBase-light"
+                          }`}>
+                            {currentSprint.status === "completed" ? "Completed" : currentSprint.status === "active" ? "Active" : "Planning"}
+                          </span>
+                        </div>
+                        {currentSprint.goal && (
+                          <p className="text-textMuted-light dark:text-textMuted-dark text-[11px] mt-1">
+                            <strong>Goal:</strong> {currentSprint.goal}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-3 text-[11px] font-mono text-textMuted-light dark:text-textMuted-dark">
+                        <span>Target: <strong>{currentSprint.capacity_points} SP</strong></span>
+                        <span>•</span>
+                        <span>Delivered: <strong className="text-status-success">{doneStories.length}/{sprintStories.length} Stories</strong></span>
+                      </div>
+                    </div>
+
+                    {/* Review Notes Block */}
+                    {currentSprint.review_notes && (
+                      <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-[11px] text-textMuted-light dark:text-textMuted-dark italic">
+                        <span className="font-semibold not-italic block text-textPrimary-light dark:text-textPrimary-dark mb-0.5">
+                          Catatan Review Sprint:
+                        </span>
+                        &ldquo;{currentSprint.review_notes}&rdquo;
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Retrospective 3 Pillars */}
+                  {retro ? (
+                    <div className="space-y-3">
+                      {/* What Went Well */}
+                      <div className="p-3.5 rounded-lg border border-status-success/30 bg-status-success/5 space-y-2">
+                        <div className="flex items-center gap-1.5 font-semibold text-status-success">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Pencapaian Positif (What Went Well):</span>
+                        </div>
+                        <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                          {retro.went_well?.map((item: string, i: number) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Bottlenecks */}
+                      <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
+                        <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Kendala & Bottlenecks:</span>
+                        </div>
+                        <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                          {retro.bottlenecks?.map((item: string, i: number) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Action Items */}
+                      <div className="p-3.5 rounded-lg border border-accent/30 bg-accent/5 space-y-2">
+                        <div className="flex items-center gap-1.5 font-semibold text-accent">
+                          <Sparkles className="w-4 h-4" />
+                          <span>Rekomendasi Tindakan (Action Items):</span>
+                        </div>
+                        <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                          {retro.action_items?.map((item: string, i: number) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-center space-y-1.5">
+                      <Sparkles className="w-5 h-5 text-accent mx-auto" />
+                      <p className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
+                        {currentSprint.status === "completed"
+                          ? "Sprint ini belum memiliki catatan retrospektif terstruktur."
+                          : "Sprint belum diselesaikan."}
+                      </p>
+                      <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                        Scrum Retrospective akan di-generate otomatis oleh Dewi Lestari ketika sprint ditutup secara formal.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Stories in this sprint */}
+                  <div className="space-y-2 pt-2 border-t border-borderBase-light dark:border-borderBase-dark">
+                    <span className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                      User Stories pada Sprint Ini ({sprintStories.length}):
+                    </span>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {sprintStories.length === 0 ? (
+                        <p className="text-textMuted-light dark:text-textMuted-dark italic text-[11px]">
+                          Tidak ada user story yang dialokasikan ke sprint ini.
+                        </p>
+                      ) : (
+                        sprintStories.map((story) => (
+                          <div
+                            key={story.id}
+                            className="flex items-center justify-between p-2 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark"
+                          >
+                            <div className="flex items-center space-x-2 min-w-0">
+                              <span className="font-mono text-[10px] text-accent font-semibold">
+                                {story.key}
+                              </span>
+                              <span className="truncate text-textPrimary-light dark:text-textPrimary-dark">
+                                {story.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-2 shrink-0">
+                              <span className="font-mono text-[10px] text-textMuted-light">
+                                {story.estimate_points} SP
+                              </span>
+                              <StatusBadge
+                                variant={story.status === "done" ? "success" : "info"}
+                                label={story.status}
+                              />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setIsSprintHistoryModalOpen(false)}>
+                Tutup
               </Button>
             </div>
           </div>
@@ -3926,181 +4302,7 @@ export default function ScrumBoardPage({
         </div>
       )}
 
-      {/* 3. Sprint Review & Retro Modal */}
-      {isRetroModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in">
-            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-lg bg-accent/15 text-accent flex items-center justify-center font-bold">
-                  <Award className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-                    Sprint Review & Retrospective
-                  </h3>
-                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                    Evaluasi Scrum & Kesiapan Sprint Berikutnya
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRetroModalOpen(false)}
-                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            {retroResult ? (
-              /* Retrospective Result View */
-              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
-                <div className="p-3 rounded-lg bg-status-success/10 border border-status-success/30 flex items-center gap-2 text-status-success">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span className="font-semibold">{retroResult.message}</span>
-                </div>
-
-                {retroResult.retrospective && (
-                  <div className="space-y-3">
-                    {/* What Went Well */}
-                    <div className="p-3.5 rounded-lg border border-status-success/30 bg-status-success/5 space-y-2">
-                      <div className="flex items-center gap-1.5 font-semibold text-status-success">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Pencapaian Positif (What Went Well):</span>
-                      </div>
-                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
-                        {retroResult.retrospective.went_well?.map((item: string, i: number) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Bottlenecks */}
-                    <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
-                      <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span>Kendala & Bottlenecks:</span>
-                      </div>
-                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
-                        {retroResult.retrospective.bottlenecks?.map((item: string, i: number) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Action Items */}
-                    <div className="p-3.5 rounded-lg border border-accent/30 bg-accent/5 space-y-2">
-                      <div className="flex items-center gap-1.5 font-semibold text-accent">
-                        <Sparkles className="w-4 h-4" />
-                        <span>Rekomendasi Tindakan untuk Sprint Berikutnya:</span>
-                      </div>
-                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
-                        {retroResult.retrospective.action_items?.map((item: string, i: number) => (
-                          <li key={i}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex justify-end">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => {
-                      setIsRetroModalOpen(false);
-                      setRetroResult(null);
-                    }}
-                  >
-                    Tutup & Lanjut ke Board
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              /* Review Form View */
-              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
-                {(() => {
-                  const targetSprint = activeSprint || sprints[0];
-                  const sprintItems = items.filter((i) => i.sprint_id === targetSprint?.id);
-                  const doneItems = sprintItems.filter((i) => i.status === "done");
-                  const remainingItems = sprintItems.filter((i) => i.status !== "done");
-
-                  return (
-                    <>
-                      {/* Sprint Delivery Summary */}
-                      <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark grid grid-cols-2 gap-3 text-center">
-                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
-                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
-                            Stories Selesai (Done)
-                          </span>
-                          <span className="text-xl font-bold font-mono text-status-success">
-                            {doneItems.length} / {sprintItems.length}
-                          </span>
-                        </div>
-                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
-                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
-                            Stories Belum Selesai
-                          </span>
-                          <span className="text-xl font-bold font-mono text-textMuted-light dark:text-textMuted-dark">
-                            {remainingItems.length}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Info Notice */}
-                      <div className="p-3 rounded-lg border border-accent/20 bg-accent/5 dark:bg-accent/10 space-y-1 text-textPrimary-light dark:text-textPrimary-dark">
-                        <p className="font-semibold flex items-center gap-1.5 text-accent">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Evaluasi Otomatis oleh Dewi Lestari</span>
-                        </p>
-                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
-                          Saat Anda menyelesaikan sprint ini, Dewi Lestari akan mengagregasi performa agen, menghasilkan catatan Retrospective (Went Well, Bottlenecks, Action Items), dan memajukan Sprint berikutnya ke status <strong>Pending Approval</strong> untuk ditinjau.
-                        </p>
-                      </div>
-
-                      {/* Review Notes Input */}
-                      <div className="space-y-1.5">
-                        <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
-                          Catatan Evaluasi / Feedback Anda (Opsional):
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={reviewNotes}
-                          onChange={(e) => setReviewNotes(e.target.value)}
-                          placeholder="Contoh: Implementasi arsitektur sudah bagus, pada sprint berikutnya fokus ke styling CSS responsif dan interaktivitas..."
-                          className="w-full p-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
-                        />
-                      </div>
-
-                      {/* Modal Actions */}
-                      <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setIsRetroModalOpen(false)}
-                          disabled={retroSubmitting}
-                        >
-                          Batal
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          onClick={() => targetSprint && handleCompleteReviewSprint(targetSprint.id)}
-                          isLoading={retroSubmitting}
-                          leftIcon={<Award className="w-3.5 h-3.5" />}
-                        >
-                          Selesaikan Sprint & Jalankan Retro →
-                        </Button>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* 4. Revision Request Modal */}
       {isRevisionModalOpen && revisionTargetItem && (

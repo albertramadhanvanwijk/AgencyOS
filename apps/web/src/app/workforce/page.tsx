@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { AppShell } from "../../components/layout/AppShell";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatusBadge, StatusVariant } from "../../components/ui/StatusBadge";
@@ -21,6 +21,7 @@ import {
   Sparkles,
   Info,
   Dices,
+  Bot,
 } from "lucide-react";
 import { generateIndonesianName } from "../../utils/nameGenerator";
 
@@ -61,6 +62,8 @@ interface LLMConfig {
   model: string;
   is_default: boolean;
   status: string;
+  has_api_key?: boolean;
+  masked_api_key?: string;
   available_models: string[];
 }
 
@@ -75,6 +78,259 @@ interface JobRole {
   name: string;
   code: string;
   department_id: string;
+}
+
+export interface ModelCatalogItem {
+  id: string;
+  name: string;
+  tier: "free" | "pro" | "preview" | "open" | "custom";
+  tierLabel: string;
+  categoryGroup: string;
+  badgeStyle: string;
+  description: string;
+  isMainForProvider?: boolean;
+}
+
+interface AgentModelSelectorProps {
+  selectedProfileId: string;
+  selectedModel: string;
+  onProfileChange: (profId: string) => void;
+  onModelChange: (model: string) => void;
+  activeLlms: LLMConfig[];
+  defaultLLM?: LLMConfig;
+  catalog: ModelCatalogItem[];
+  tierFilter: string;
+  onTierFilterChange: (tier: string) => void;
+  isSurfaceSecondary?: boolean;
+}
+
+function AgentModelSelector({
+  selectedProfileId,
+  selectedModel,
+  onProfileChange,
+  onModelChange,
+  activeLlms,
+  defaultLLM,
+  catalog,
+  tierFilter,
+  onTierFilterChange,
+  isSurfaceSecondary = false,
+}: AgentModelSelectorProps) {
+  const currentProvider = activeLlms.find((l) => l.id === selectedProfileId) || defaultLLM;
+  const currentTargetModel = currentProvider?.model || defaultLLM?.model || "gemini-3.8-flash";
+
+  // Filter catalog by active tier
+  const filteredCatalog = useMemo(() => {
+    if (tierFilter === "all") return catalog;
+    return catalog.filter((c) => c.tier === tierFilter);
+  }, [catalog, tierFilter]);
+
+  // Grouped for <optgroup>
+  const groupedCatalog = useMemo(() => {
+    const groups: { [group: string]: ModelCatalogItem[] } = {};
+    catalog.forEach((item) => {
+      if (!groups[item.categoryGroup]) groups[item.categoryGroup] = [];
+      groups[item.categoryGroup].push(item);
+    });
+    return Object.entries(groups).map(([groupTitle, models]) => ({
+      groupTitle,
+      models,
+    }));
+  }, [catalog]);
+
+  const countFree = catalog.filter((c) => c.tier === "free").length;
+  const countPro = catalog.filter((c) => c.tier === "pro").length;
+  const countPreview = catalog.filter((c) => c.tier === "preview").length;
+  const countOpen = catalog.filter((c) => c.tier === "open").length;
+
+  return (
+    <div
+      className={`space-y-3 p-3 rounded border border-borderBase-light dark:border-borderBase-dark ${
+        isSurfaceSecondary
+          ? "bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50"
+          : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
+      }`}
+    >
+      {/* 1. LLM Provider Dropdown */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="font-semibold block text-[11px] text-textPrimary-light dark:text-textPrimary-dark">
+            1. Pilih LLM Provider:
+          </label>
+          <span className="text-[10px] text-accent font-medium">
+            Tersinkron dengan Settings ({activeLlms.length} Aktif)
+          </span>
+        </div>
+        <select
+          value={selectedProfileId}
+          onChange={(e) => onProfileChange(e.target.value)}
+          className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          <option value="">
+            Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
+          </option>
+          {activeLlms.map((llm) => (
+            <option key={llm.id} value={llm.id}>
+              {llm.name} ({llm.provider}) {llm.is_default ? "★ Default" : ""} {llm.has_api_key ? "• API Key Terhubung" : ""}
+            </option>
+          ))}
+        </select>
+        <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1">
+          Hanya menampilkan provider yang aktif & telah dikonfigurasi di Settings.
+        </p>
+      </div>
+
+      {/* 2. Model AI Selection */}
+      <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="font-semibold text-[11px] text-textPrimary-light dark:text-textPrimary-dark">
+            2. Pilih Model AI dari LLM yang Aktif:
+          </label>
+          <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 font-medium">
+            {catalog.length} model tersedia
+          </span>
+        </div>
+
+        {/* Dropdown with Optgroups */}
+        <select
+          value={selectedModel}
+          onChange={(e) => onModelChange(e.target.value)}
+          className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+        >
+          <option value="">
+            {selectedProfileId
+              ? `Model Utama Provider (${currentTargetModel})`
+              : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
+          </option>
+          {groupedCatalog.map(({ groupTitle, models }) => (
+            <optgroup key={groupTitle} label={groupTitle}>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id} — [{m.tierLabel}] {m.isMainForProvider ? "★ (Model Utama)" : ""}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
+        {/* Visual Model Catalog with Tier Filters */}
+        <div className="space-y-1.5 pt-1">
+          {/* Tier Tabs */}
+          <div className="flex items-center space-x-1 overflow-x-auto pb-0.5 text-[10px]">
+            <button
+              type="button"
+              onClick={() => onTierFilterChange("all")}
+              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                tierFilter === "all"
+                  ? "bg-accent text-white font-semibold"
+                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              Semua ({catalog.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => onTierFilterChange("free")}
+              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                tierFilter === "free"
+                  ? "bg-emerald-600 text-white font-semibold"
+                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              ⚡ Free Tier ({countFree})
+            </button>
+            <button
+              type="button"
+              onClick={() => onTierFilterChange("pro")}
+              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                tierFilter === "pro"
+                  ? "bg-blue-600 text-white font-semibold"
+                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              💎 Pro Tier ({countPro})
+            </button>
+            <button
+              type="button"
+              onClick={() => onTierFilterChange("preview")}
+              className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                tierFilter === "preview"
+                  ? "bg-purple-600 text-white font-semibold"
+                  : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              🚀 Preview ({countPreview})
+            </button>
+            {countOpen > 0 && (
+              <button
+                type="button"
+                onClick={() => onTierFilterChange("open")}
+                className={`px-2 py-0.5 rounded font-medium transition-colors shrink-0 ${
+                  tierFilter === "open"
+                    ? "bg-amber-600 text-white font-semibold"
+                    : "bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light hover:text-textPrimary-light"
+                }`}
+              >
+                🌐 Open ({countOpen})
+              </button>
+            )}
+          </div>
+
+          {/* Cards List */}
+          <div className="space-y-1 max-h-44 overflow-y-auto pr-0.5">
+            {filteredCatalog.map((item) => {
+              const isSelected =
+                selectedModel === item.id || (!selectedModel && item.isMainForProvider);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onModelChange(item.id)}
+                  className={`w-full text-left p-2 rounded border transition-all flex flex-col space-y-0.5 ${
+                    isSelected
+                      ? "border-accent bg-accent/10 shadow-xs ring-1 ring-accent"
+                      : "border-borderBase-light/60 dark:border-borderBase-dark/60 bg-surface-light dark:bg-surface-dark hover:border-accent/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center space-x-1.5 truncate">
+                      {isSelected ? (
+                        <Check className="w-3.5 h-3.5 text-accent shrink-0" />
+                      ) : (
+                        <Bot className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark shrink-0" />
+                      )}
+                      <span className="font-mono font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark truncate">
+                        {item.id}
+                      </span>
+                      {item.isMainForProvider && (
+                        <span className="text-[9px] font-medium text-accent">★ Utama</span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-[9px] font-medium px-1.5 py-0.2 rounded border shrink-0 ${item.badgeStyle}`}
+                    >
+                      {item.tierLabel}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark leading-tight line-clamp-1">
+                    {item.description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tip / Explainer */}
+          <div className="p-2 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px] text-textMuted-light dark:text-textMuted-dark flex items-start space-x-1.5 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">Kesesuaian Akun:</span> Akun Free Tier (Google AI Studio) dapat memakai model <span className="text-emerald-600 dark:text-emerald-400 font-medium">Free Tier / Flash</span> secara gratis dengan kuota harian besar. Akun Pro/Pay-as-you-go dapat memanfaatkan model <span className="text-blue-600 dark:text-blue-400 font-medium">Pro Tier</span> untuk reasoning kompleks.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function WorkforcePage() {
@@ -102,28 +358,378 @@ export default function WorkforcePage() {
   const [newLLMModel, setNewLLMModel] = useState("");
   const [newInstructions, setNewInstructions] = useState("");
   const [newSkills, setNewSkills] = useState("");
+  const [modalTierFilter, setModalTierFilter] = useState<string>("all");
 
   // Inspect Drawer State
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [drawerLLMProfileId, setDrawerLLMProfileId] = useState("");
   const [drawerLLMModel, setDrawerLLMModel] = useState("");
+  const [drawerTierFilter, setDrawerTierFilter] = useState<string>("all");
   const [updatingLLM, setUpdatingLLM] = useState(false);
 
   // Active default LLM
   const defaultLLM = llms.find((l) => l.is_default) || llms[0];
 
-  // Helper to get active models for a profile or default
-  const getAvailableModelsForProfile = (profileId: string): string[] => {
+  // Active LLM providers synchronized with Settings
+  // Only shows providers that have an API key configured or are verified in Settings
+  const activeLlms = useMemo(() => {
+    const configured = llms.filter(
+      (l) => l.has_api_key || l.status === "verified" || l.status === "warning"
+    );
+    if (configured.length === 0 && defaultLLM) {
+      return [defaultLLM];
+    }
+    return configured;
+  }, [llms, defaultLLM]);
+
+  // Model catalog generator with full Free/Pro/Preview tier mapping
+  const getAvailableModelsCatalog = (profileId: string): ModelCatalogItem[] => {
     const prof = llms.find((l) => l.id === profileId) || defaultLLM;
-    if (!prof) return [];
-    const set = new Set<string>();
-    if (prof.model) set.add(prof.model);
-    if (Array.isArray(prof.available_models)) {
+    const targetModel = prof?.model || defaultLLM?.model || "gemini-3.8-flash";
+    const providerName = (prof?.provider || prof?.name || "").toLowerCase();
+    const baseUrl = (prof?.base_url || "").toLowerCase();
+
+    const isGemini = providerName.includes("gemini") || baseUrl.includes("generativelanguage.googleapis.com");
+    const isOpenAI = providerName.includes("openai") || baseUrl.includes("api.openai.com");
+    const isAnthropic = providerName.includes("claude") || providerName.includes("anthropic") || baseUrl.includes("anthropic.com");
+    const isOllama = providerName.includes("ollama") || baseUrl.includes("localhost") || baseUrl.includes("11434");
+
+    let catalog: ModelCatalogItem[] = [];
+
+    if (isGemini || (!isOpenAI && !isAnthropic && !isOllama)) {
+      catalog = [
+        // Free Tier / Flash
+        {
+          id: "gemini-2.5-flash",
+          name: "Gemini 2.5 Flash",
+          tier: "free",
+          tierLabel: "Free Tier / Kuota Luas",
+          categoryGroup: "⚡ Free Tier & Kuota Tinggi (Gratis / Hemat)",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Rekomendasi Utama: Kecepatan tinggi, multi-modal & kuota gratis harian besar (15 RPM)",
+        },
+        {
+          id: "gemini-2.5-flash-lite",
+          name: "Gemini 2.5 Flash-Lite",
+          tier: "free",
+          tierLabel: "Free Tier / Latensi Rendah",
+          categoryGroup: "⚡ Free Tier & Kuota Tinggi (Gratis / Hemat)",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Ultra cepat, konsumsi resource minim, ideal untuk agent loop berulang",
+        },
+        {
+          id: "gemini-2.0-flash",
+          name: "Gemini 2.0 Flash",
+          tier: "free",
+          tierLabel: "Free Tier / Standar",
+          categoryGroup: "⚡ Free Tier & Kuota Tinggi (Gratis / Hemat)",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Versi 2.0 stabil dengan performa komprehensif untuk operasional umum",
+        },
+        {
+          id: "gemini-1.5-flash",
+          name: "Gemini 1.5 Flash",
+          tier: "free",
+          tierLabel: "Free Tier / Handal",
+          categoryGroup: "⚡ Free Tier & Kuota Tinggi (Gratis / Hemat)",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Model flash stabil generasi 1.5 dengan kuota gratis melimpah",
+        },
+        {
+          id: "gemini-flash-latest",
+          name: "Gemini Flash Latest",
+          tier: "free",
+          tierLabel: "Free Tier / Alias Terbaru",
+          categoryGroup: "⚡ Free Tier & Kuota Tinggi (Gratis / Hemat)",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Mengarah otomatis ke build Flash produksi Google paling mutakhir",
+        },
+        // Pro Tier / Reasoning
+        {
+          id: "gemini-2.5-pro",
+          name: "Gemini 2.5 Pro",
+          tier: "pro",
+          tierLabel: "Pro Tier / Flagship Reasoning",
+          categoryGroup: "💎 Pro Tier & Penalaran Mendalam (Berbayar / Tingkat Lanjut)",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Penalaran tertinggi untuk arsitektur software, algoritma kompleks & review kritis",
+        },
+        {
+          id: "gemini-1.5-pro",
+          name: "Gemini 1.5 Pro",
+          tier: "pro",
+          tierLabel: "Pro Tier / 2M Konteks",
+          categoryGroup: "💎 Pro Tier & Penalaran Mendalam (Berbayar / Tingkat Lanjut)",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Kapasitas konteks raksasa hingga 2 juta token, membaca repositori besar",
+        },
+        {
+          id: "gemini-3.1-pro-preview",
+          name: "Gemini 3.1 Pro Preview",
+          tier: "pro",
+          tierLabel: "Pro Tier / Next-Gen Pro",
+          categoryGroup: "💎 Pro Tier & Penalaran Mendalam (Berbayar / Tingkat Lanjut)",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Preview penalaran mutakhir generasi 3.1 untuk algorithmic engineering",
+        },
+        {
+          id: "gemini-pro-latest",
+          name: "Gemini Pro Latest",
+          tier: "pro",
+          tierLabel: "Pro Tier / Alias Terbaru",
+          categoryGroup: "💎 Pro Tier & Penalaran Mendalam (Berbayar / Tingkat Lanjut)",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Mengarah otomatis ke versi Pro stabil produksi Google paling mutakhir",
+        },
+        // Next-Gen Preview
+        {
+          id: "gemini-3.8-flash",
+          name: "Gemini 3.8 Flash",
+          tier: "preview",
+          tierLabel: "Default Sistem / Generasi 3.8",
+          categoryGroup: "🚀 Generasi Terbaru & Preview",
+          badgeStyle: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30",
+          description: "Model default Antigravity / AgencyOS: performa eksekusi agen teroptimasi",
+        },
+        {
+          id: "gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
+          tier: "preview",
+          tierLabel: "Next-Gen / Hybrid Mode",
+          categoryGroup: "🚀 Generasi Terbaru & Preview",
+          badgeStyle: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30",
+          description: "Model hybrid reasoning generasi 3.7 untuk sintesis koding cepat",
+        },
+        {
+          id: "gemini-3.6-flash",
+          name: "Gemini 3.6 Flash",
+          tier: "preview",
+          tierLabel: "Next-Gen Preview",
+          categoryGroup: "🚀 Generasi Terbaru & Preview",
+          badgeStyle: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30",
+          description: "Preview throughput tinggi untuk eksekusi workflow pipeline",
+        },
+        {
+          id: "gemini-3.5-flash",
+          name: "Gemini 3.5 Flash",
+          tier: "preview",
+          tierLabel: "Next-Gen Preview",
+          categoryGroup: "🚀 Generasi Terbaru & Preview",
+          badgeStyle: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30",
+          description: "Generasi preview 3.5 teruji untuk workflow otomasi",
+        },
+        // Open Weights
+        {
+          id: "gemma-4-26b-a4b-it",
+          name: "Gemma 4 26B Instruct",
+          tier: "open",
+          tierLabel: "Open Weights / Free",
+          categoryGroup: "🌐 Open Weights & On-Device",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Model open Google berbobot 26B instruction-tuned untuk tugas spesifik",
+        },
+        {
+          id: "gemma-4-31b-it",
+          name: "Gemma 4 31B Instruct",
+          tier: "open",
+          tierLabel: "Open Weights / Free",
+          categoryGroup: "🌐 Open Weights & On-Device",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Model open Google 31B berkapasitas besar untuk penalaran mandiri",
+        },
+      ];
+    } else if (isOpenAI) {
+      catalog = [
+        {
+          id: "gpt-4o-mini",
+          name: "GPT-4o Mini",
+          tier: "free",
+          tierLabel: "Tier 1 / Hemat & Cepat",
+          categoryGroup: "⚡ Free / Low-Cost Tier",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Sangat hemat & cepat, cocok untuk task operasional harian agen",
+        },
+        {
+          id: "gpt-3.5-turbo",
+          name: "GPT-3.5 Turbo",
+          tier: "free",
+          tierLabel: "Legacy / Hemat",
+          categoryGroup: "⚡ Free / Low-Cost Tier",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Model legendaris untuk komputasi teks cepat berbiaya minim",
+        },
+        {
+          id: "gpt-4o",
+          name: "GPT-4o",
+          tier: "pro",
+          tierLabel: "Pro Tier / Flagship",
+          categoryGroup: "💎 Pro Tier & Flagship Reasoning",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Kemampuan omni multi-modal & penalaran instruksi tingkat tinggi",
+        },
+        {
+          id: "o3-mini",
+          name: "o3-mini",
+          tier: "pro",
+          tierLabel: "Pro Tier / STEM & Code",
+          categoryGroup: "💎 Pro Tier & Flagship Reasoning",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Penalaran matematika & coding dengan throughput sangat tinggi",
+        },
+        {
+          id: "o1",
+          name: "o1",
+          tier: "pro",
+          tierLabel: "Pro Tier / Deep Reasoning",
+          categoryGroup: "💎 Pro Tier & Flagship Reasoning",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Model penalaran bertahap mendalam untuk problem kompleks",
+        },
+        {
+          id: "o1-mini",
+          name: "o1-mini",
+          tier: "pro",
+          tierLabel: "Pro Tier / Fast Reasoning",
+          categoryGroup: "💎 Pro Tier & Flagship Reasoning",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Penalaran matematika dan pemrograman berkecepatan tinggi",
+        },
+        {
+          id: "gpt-4-turbo",
+          name: "GPT-4 Turbo",
+          tier: "pro",
+          tierLabel: "Pro Tier / 128k Konteks",
+          categoryGroup: "💎 Pro Tier & Flagship Reasoning",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Kapasitas konteks besar untuk analisis dokumen dan kode",
+        },
+      ];
+    } else if (isAnthropic) {
+      catalog = [
+        {
+          id: "claude-3-5-haiku",
+          name: "Claude 3.5 Haiku",
+          tier: "free",
+          tierLabel: "Standard / Ultra Cepat",
+          categoryGroup: "⚡ Fast Execution Tier",
+          badgeStyle: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+          description: "Respon instan dengan latensi ultra rendah untuk task cepat",
+        },
+        {
+          id: "claude-3-7-sonnet",
+          name: "Claude 3.7 Sonnet",
+          tier: "pro",
+          tierLabel: "Pro Tier / Hybrid Coding",
+          categoryGroup: "💎 Pro Tier & Coding Specialist",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Hybrid thinking and coding model mutakhir dari Anthropic",
+        },
+        {
+          id: "claude-3-5-sonnet",
+          name: "Claude 3.5 Sonnet",
+          tier: "pro",
+          tierLabel: "Pro Tier / Coding Specialist",
+          categoryGroup: "💎 Pro Tier & Coding Specialist",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Standar industri untuk coding dan refactoring software",
+        },
+        {
+          id: "claude-3-opus",
+          name: "Claude 3 Opus",
+          tier: "pro",
+          tierLabel: "Pro Tier / Deep Analysis",
+          categoryGroup: "💎 Pro Tier & Coding Specialist",
+          badgeStyle: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30",
+          description: "Analisis nuansa mendalam untuk perancangan strategis",
+        },
+      ];
+    } else {
+      catalog = [
+        {
+          id: "llama-3.3-70b",
+          name: "Llama 3.3 70B",
+          tier: "open",
+          tierLabel: "Local / 70B High Power",
+          categoryGroup: "🌐 On-Device & Local Models",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Model open-source terkemuka untuk inferensi mandiri offline",
+        },
+        {
+          id: "llama3",
+          name: "Llama 3",
+          tier: "open",
+          tierLabel: "Local / Standard",
+          categoryGroup: "🌐 On-Device & Local Models",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Standar inferensi lokal via endpoint Ollama",
+        },
+        {
+          id: "qwen2.5-coder-32b",
+          name: "Qwen 2.5 Coder 32B",
+          tier: "open",
+          tierLabel: "Local / Coding Specialist",
+          categoryGroup: "🌐 On-Device & Local Models",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Model spesialis coding open source performa tinggi",
+        },
+        {
+          id: "deepseek-coder",
+          name: "DeepSeek Coder",
+          tier: "open",
+          tierLabel: "Local / DeepSeek Coder",
+          categoryGroup: "🌐 On-Device & Local Models",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Eksekusi kode lokal dengan pemahaman sintaks mendalam",
+        },
+        {
+          id: "mistral-small",
+          name: "Mistral Small",
+          tier: "open",
+          tierLabel: "Local / Low Latency",
+          categoryGroup: "🌐 On-Device & Local Models",
+          badgeStyle: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30",
+          description: "Model ringan untuk efisiensi komputasi lokal",
+        },
+      ];
+    }
+
+    // Merge dynamic available_models from API key detection if any exist
+    const existingIds = new Set(catalog.map((c) => c.id));
+    if (Array.isArray(prof?.available_models)) {
       prof.available_models.forEach((m) => {
-        if (m && typeof m === "string") set.add(m);
+        if (m && typeof m === "string" && !existingIds.has(m)) {
+          existingIds.add(m);
+          catalog.push({
+            id: m,
+            name: m,
+            tier: "custom",
+            tierLabel: "API Discovered",
+            categoryGroup: "📦 Model Tambahan Terdeteksi dari Akun API Anda",
+            badgeStyle: "text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
+            description: "Model yang dilaporkan aktif oleh akun API provider Anda",
+          });
+        }
       });
     }
-    return Array.from(set);
+
+    // If the profile's current target model is not in catalog, prepend it
+    if (targetModel && !existingIds.has(targetModel)) {
+      catalog.unshift({
+        id: targetModel,
+        name: targetModel,
+        tier: "custom",
+        tierLabel: "Model Aktif Provider",
+        categoryGroup: "🌟 Model Utama Provider",
+        badgeStyle: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30",
+        description: "Model yang saat ini dikonfigurasi pada provider ini",
+        isMainForProvider: true,
+      });
+    }
+
+    return catalog.map((item) => ({
+      ...item,
+      isMainForProvider: item.id === targetModel,
+    }));
   };
 
   const fetchData = async () => {
@@ -478,7 +1084,7 @@ export default function WorkforcePage() {
       {/* Inspect Agent Drawer Modal */}
       {selectedAgent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-lg w-full p-5 space-y-4 shadow-xl">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-xl w-full p-5 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
               <div>
                 <div className="flex items-center space-x-2">
@@ -553,92 +1159,29 @@ export default function WorkforcePage() {
                     </span>
                   </div>
 
-                  <div className="space-y-2.5 pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50">
-                    <div>
-                      <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block mb-1 font-medium">
-                        1. Pilih LLM Provider:
-                      </label>
-                      <select
-                        value={drawerLLMProfileId}
-                        onChange={(e) => {
-                          const profId = e.target.value;
-                          setDrawerLLMProfileId(profId);
-                          const prof = llms.find((l) => l.id === profId);
-                          if (prof) {
-                            setDrawerLLMModel(prof.model);
-                          } else {
-                            setDrawerLLMModel("");
-                          }
-                        }}
-                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
-                      >
-                        <option value="">
-                          Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
-                        </option>
-                        {llms.map((llm) => (
-                          <option key={llm.id} value={llm.id}>
-                            {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50 space-y-3">
+                    <AgentModelSelector
+                      selectedProfileId={drawerLLMProfileId}
+                      selectedModel={drawerLLMModel}
+                      onProfileChange={(profId) => {
+                        setDrawerLLMProfileId(profId);
+                        const prof = activeLlms.find((l) => l.id === profId);
+                        if (prof) {
+                          setDrawerLLMModel(prof.model);
+                        } else {
+                          setDrawerLLMModel("");
+                        }
+                      }}
+                      onModelChange={(model) => setDrawerLLMModel(model)}
+                      activeLlms={activeLlms}
+                      defaultLLM={defaultLLM}
+                      catalog={getAvailableModelsCatalog(drawerLLMProfileId)}
+                      tierFilter={drawerTierFilter}
+                      onTierFilterChange={(tier) => setDrawerTierFilter(tier)}
+                      isSurfaceSecondary={true}
+                    />
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block font-medium">
-                          2. Pilih Model AI dari LLM yang Aktif:
-                        </label>
-                        <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                          {getAvailableModelsForProfile(drawerLLMProfileId).length} model terdeteksi
-                        </span>
-                      </div>
-                      <select
-                        value={drawerLLMModel}
-                        onChange={(e) => setDrawerLLMModel(e.target.value)}
-                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                      >
-                        <option value="">
-                          {drawerLLMProfileId
-                            ? `Model Utama Provider (${llms.find((l) => l.id === drawerLLMProfileId)?.model || "Default"})`
-                            : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
-                        </option>
-                        {getAvailableModelsForProfile(drawerLLMProfileId).map((m) => (
-                          <option key={m} value={m}>
-                            {m} {m === (llms.find((l) => l.id === drawerLLMProfileId)?.model || defaultLLM?.model) ? "★ (Model Utama)" : ""}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Clickable tags for available models */}
-                      {getAvailableModelsForProfile(drawerLLMProfileId).length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
-                          <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-1">
-                            Model yang aktif di provider ini:
-                          </span>
-                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-                            {getAvailableModelsForProfile(drawerLLMProfileId).slice(0, 10).map((m) => {
-                              const isSelected = drawerLLMModel === m || (!drawerLLMModel && m === (llms.find((l) => l.id === drawerLLMProfileId)?.model || defaultLLM?.model));
-                              return (
-                                <button
-                                  key={m}
-                                  type="button"
-                                  onClick={() => setDrawerLLMModel(m)}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
-                                    isSelected
-                                      ? "bg-accent/15 text-accent border-accent/40 font-semibold"
-                                      : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-                                  }`}
-                                >
-                                  {m}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-2 flex justify-end">
+                    <div className="pt-1 flex justify-end">
                       <Button
                         size="sm"
                         onClick={handleUpdateAgentLLM}
@@ -670,7 +1213,7 @@ export default function WorkforcePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form
             onSubmit={handleCreateAgent}
-            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-md w-full p-5 space-y-4 shadow-xl"
+            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-lg w-full p-5 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
               <div>
@@ -765,87 +1308,26 @@ export default function WorkforcePage() {
               </div>
 
               {/* LLM Provider & Model Assignment */}
-              <div className="space-y-2 p-3 rounded bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50 border border-borderBase-light dark:border-borderBase-dark">
-                <div>
-                  <label className="font-medium block mb-1 text-[11px]">1. Pilih LLM Provider</label>
-                  <select
-                    value={newLLMProfileId}
-                    onChange={(e) => {
-                      const profId = e.target.value;
-                      setNewLLMProfileId(profId);
-                      const prof = llms.find((l) => l.id === profId);
-                      if (prof) {
-                        setNewLLMModel(prof.model);
-                      } else {
-                        setNewLLMModel("");
-                      }
-                    }}
-                    className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
-                  >
-                    <option value="">
-                      Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
-                    </option>
-                    {llms.map((llm) => (
-                      <option key={llm.id} value={llm.id}>
-                        {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-medium text-[11px]">2. Pilih Model AI dari LLM yang Aktif</label>
-                    <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                      {getAvailableModelsForProfile(newLLMProfileId).length} model terdeteksi
-                    </span>
-                  </div>
-                  <select
-                    value={newLLMModel}
-                    onChange={(e) => setNewLLMModel(e.target.value)}
-                    className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                  >
-                    <option value="">
-                      {newLLMProfileId
-                        ? `Model Utama Provider (${llms.find((l) => l.id === newLLMProfileId)?.model || "Default"})`
-                        : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
-                    </option>
-                    {getAvailableModelsForProfile(newLLMProfileId).map((m) => (
-                      <option key={m} value={m}>
-                        {m} {m === (llms.find((l) => l.id === newLLMProfileId)?.model || defaultLLM?.model) ? "★ (Model Utama)" : ""}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Clickable tags for available models */}
-                  {getAvailableModelsForProfile(newLLMProfileId).length > 0 && (
-                    <div className="mt-2 pt-1.5 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
-                      <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-1">
-                        Model yang aktif di provider ini:
-                      </span>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                        {getAvailableModelsForProfile(newLLMProfileId).slice(0, 10).map((m) => {
-                          const isSelected = newLLMModel === m || (!newLLMModel && m === (llms.find((l) => l.id === newLLMProfileId)?.model || defaultLLM?.model));
-                          return (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => setNewLLMModel(m)}
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
-                                isSelected
-                                  ? "bg-accent/15 text-accent border-accent/40 font-semibold"
-                                  : "bg-surface-light dark:bg-surface-dark border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-                              }`}
-                            >
-                              {m}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AgentModelSelector
+                selectedProfileId={newLLMProfileId}
+                selectedModel={newLLMModel}
+                onProfileChange={(profId) => {
+                  setNewLLMProfileId(profId);
+                  const prof = activeLlms.find((l) => l.id === profId);
+                  if (prof) {
+                    setNewLLMModel(prof.model);
+                  } else {
+                    setNewLLMModel("");
+                  }
+                }}
+                onModelChange={(model) => setNewLLMModel(model)}
+                activeLlms={activeLlms}
+                defaultLLM={defaultLLM}
+                catalog={getAvailableModelsCatalog(newLLMProfileId)}
+                tierFilter={modalTierFilter}
+                onTierFilterChange={(tier) => setModalTierFilter(tier)}
+                isSurfaceSecondary={true}
+              />
 
               <div>
                 <label className="font-medium block mb-1">Initial Skills (comma-separated)</label>

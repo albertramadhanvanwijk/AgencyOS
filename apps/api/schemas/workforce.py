@@ -31,6 +31,7 @@ class AIAgentBase(BaseModel):
     max_concurrency: int = Field(default=2, ge=1, le=10)
     engine_adapter: str = Field(default="mock")
     llm_profile_id: Optional[str] = None
+    llm_model: Optional[str] = None
     instructions: Optional[str] = None
 
 class AIAgentCreate(AIAgentBase):
@@ -47,6 +48,7 @@ class AIAgentUpdate(BaseModel):
     max_concurrency: Optional[int] = None
     engine_adapter: Optional[str] = None
     llm_profile_id: Optional[str] = None
+    llm_model: Optional[str] = None
     instructions: Optional[str] = None
     change_rationale: Optional[str] = None
 

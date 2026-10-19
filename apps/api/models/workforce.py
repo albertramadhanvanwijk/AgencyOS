@@ -26,6 +26,7 @@ class AIAgent(Base):
     current_concurrency = Column(Integer, default=0)
     engine_adapter = Column(String(64), default="mock") # mock, claude, codex, etc.
     llm_profile_id = Column(String(64), nullable=True, default=None) # References configured LLM profile in storage/llm_configs.json
+    llm_model = Column(String(64), nullable=True, default=None) # Explicit model override (or None to inherit from profile/default)
     
     # System Instructions / Persona
     instructions = Column(Text, nullable=True)

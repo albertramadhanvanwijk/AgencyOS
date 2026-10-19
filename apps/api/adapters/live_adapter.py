@@ -586,6 +586,9 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 active_model = prof["model"]
             profile_name = prof.get("name") or "Agent Custom Profile"
 
+        if agent and agent.llm_model:
+            active_model = agent.llm_model
+
         if not active_key and not ("localhost" in active_url or "127.0.0.1" in active_url):
             raise HTTPException(
                 status_code=400,

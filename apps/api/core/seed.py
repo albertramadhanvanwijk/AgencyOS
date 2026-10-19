@@ -598,6 +598,13 @@ def init_db():
             conn.commit()
     except Exception:
         pass
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE ai_agents ADD COLUMN llm_model VARCHAR(64)"))
+            conn.commit()
+    except Exception:
+        pass
 
     db = SessionLocal()
     try:

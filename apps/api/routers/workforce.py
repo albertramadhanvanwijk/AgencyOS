@@ -13,17 +13,24 @@ router = APIRouter(prefix="/workforce", tags=["Workforce & Agents"])
 
 def _build_agent_out(agent: AIAgent) -> AIAgentOut:
     llm_pname = None
-    llm_mname = None
+    llm_mname = agent.llm_model
+
     if agent.llm_profile_id and agent.llm_profile_id in live_adapter._llm_configs:
         p = live_adapter._llm_configs[agent.llm_profile_id]
         llm_pname = p.get("name")
-        llm_mname = p.get("model")
+        if not llm_mname:
+            llm_mname = p.get("model")
     else:
         # Inherit active system default
         d = next((item for item in live_adapter._llm_configs.values() if item.get("is_default")), None)
         if d:
             llm_pname = f"Default Sistem ({d.get('name')})"
-            llm_mname = d.get("model")
+            if not llm_mname:
+                llm_mname = d.get("model")
+        else:
+            llm_pname = "Default Sistem"
+            if not llm_mname:
+                llm_mname = live_adapter.model
 
     return AIAgentOut(
         id=agent.id,
@@ -95,6 +102,7 @@ def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
         current_concurrency=0,
         engine_adapter=agent_in.engine_adapter,
         llm_profile_id=agent_in.llm_profile_id.strip() if agent_in.llm_profile_id and agent_in.llm_profile_id.strip() else None,
+        llm_model=agent_in.llm_model.strip() if agent_in.llm_model and agent_in.llm_model.strip() else None,
         instructions=agent_in.instructions or role.description,
         current_profile_version=1,
     )
@@ -168,6 +176,8 @@ def update_agent(agent_id: str, update_in: AIAgentUpdate, db: Session = Depends(
         agent.engine_adapter = update_in.engine_adapter
     if update_in.llm_profile_id is not None:
         agent.llm_profile_id = update_in.llm_profile_id.strip() if update_in.llm_profile_id.strip() else None
+    if update_in.llm_model is not None:
+        agent.llm_model = update_in.llm_model.strip() if update_in.llm_model.strip() else None
 
     if instruction_changed:
         pv = AgentProfileVersion(

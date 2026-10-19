@@ -99,13 +99,32 @@ export default function WorkforcePage() {
   const [newDeptId, setNewDeptId] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
   const [newLLMProfileId, setNewLLMProfileId] = useState("");
+  const [newLLMModel, setNewLLMModel] = useState("");
   const [newInstructions, setNewInstructions] = useState("");
   const [newSkills, setNewSkills] = useState("");
 
   // Inspect Drawer State
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [drawerLLMProfileId, setDrawerLLMProfileId] = useState("");
+  const [drawerLLMModel, setDrawerLLMModel] = useState("");
   const [updatingLLM, setUpdatingLLM] = useState(false);
+
+  // Active default LLM
+  const defaultLLM = llms.find((l) => l.is_default) || llms[0];
+
+  // Helper to get active models for a profile or default
+  const getAvailableModelsForProfile = (profileId: string): string[] => {
+    const prof = llms.find((l) => l.id === profileId) || defaultLLM;
+    if (!prof) return [];
+    const set = new Set<string>();
+    if (prof.model) set.add(prof.model);
+    if (Array.isArray(prof.available_models)) {
+      prof.available_models.forEach((m) => {
+        if (m && typeof m === "string") set.add(m);
+      });
+    }
+    return Array.from(set);
+  };
 
   const fetchData = async () => {
     try {
@@ -171,6 +190,7 @@ export default function WorkforcePage() {
         max_concurrency: 1,
         engine_adapter: "mock",
         llm_profile_id: newLLMProfileId ? newLLMProfileId.trim() : undefined,
+        llm_model: newLLMModel ? newLLMModel.trim() : undefined,
         instructions: newInstructions.trim() || undefined,
         initial_skills: skillsArray,
       };
@@ -190,6 +210,7 @@ export default function WorkforcePage() {
       setNewName("");
       setNewTitle("");
       setNewLLMProfileId("");
+      setNewLLMModel("");
       setNewInstructions("");
       setNewSkills("");
       await fetchData();
@@ -213,6 +234,7 @@ export default function WorkforcePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           llm_profile_id: drawerLLMProfileId || "",
+          llm_model: drawerLLMModel || "",
         }),
       });
 
@@ -417,7 +439,7 @@ export default function WorkforcePage() {
                         <div className="flex flex-col space-y-0.5">
                           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-fit">
                             <Sparkles className="w-3 h-3 text-purple-500" />
-                            <span className="font-semibold">{agent.llm_model || "gemini-2.0-flash"}</span>
+                            <span className="font-semibold">{agent.llm_model || defaultLLM?.model || "gemini-3.8-flash"}</span>
                           </span>
                           <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
                             {agent.llm_profile_id ? (agent.llm_profile_name || "Custom LLM") : "Default Sistem"}
@@ -438,6 +460,7 @@ export default function WorkforcePage() {
                           onClick={() => {
                             setSelectedAgent(agent);
                             setDrawerLLMProfileId(agent.llm_profile_id || "");
+                            setDrawerLLMModel(agent.llm_model || "");
                           }}
                         >
                           Inspect
@@ -522,25 +545,35 @@ export default function WorkforcePage() {
                   <Sparkles className="w-3.5 h-3.5 text-purple-500" />
                   <span>Model LLM & Engine:</span>
                 </span>
-                <div className="p-3 bg-canvas-light dark:bg-canvas-dark rounded border border-borderBase-light dark:border-borderBase-dark space-y-2.5">
+                <div className="p-3 bg-canvas-light dark:bg-canvas-dark rounded border border-borderBase-light dark:border-borderBase-dark space-y-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-textMuted-light dark:text-textMuted-dark text-[11px]">Model Aktif:</span>
+                    <span className="text-textMuted-light dark:text-textMuted-dark text-[11px]">Model Aktif Sekarang:</span>
                     <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium">
-                      <span>{selectedAgent.llm_model || "gemini-2.0-flash"}</span>
+                      <span>{selectedAgent.llm_model || defaultLLM?.model || "gemini-3.8-flash"}</span>
                     </span>
                   </div>
-                  <div className="space-y-1.5 pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50">
-                    <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block">
-                      Ganti Penugasan Model:
-                    </label>
-                    <div className="flex items-center space-x-2">
+
+                  <div className="space-y-2.5 pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50">
+                    <div>
+                      <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block mb-1 font-medium">
+                        1. Pilih LLM Provider:
+                      </label>
                       <select
                         value={drawerLLMProfileId}
-                        onChange={(e) => setDrawerLLMProfileId(e.target.value)}
-                        className="flex-1 h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                        onChange={(e) => {
+                          const profId = e.target.value;
+                          setDrawerLLMProfileId(profId);
+                          const prof = llms.find((l) => l.id === profId);
+                          if (prof) {
+                            setDrawerLLMModel(prof.model);
+                          } else {
+                            setDrawerLLMModel("");
+                          }
+                        }}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
                       >
                         <option value="">
-                          Gunakan Default Sistem ({llms.find((l) => l.is_default)?.model || "gemini-2.0-flash"})
+                          Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
                         </option>
                         {llms.map((llm) => (
                           <option key={llm.id} value={llm.id}>
@@ -548,13 +581,74 @@ export default function WorkforcePage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block font-medium">
+                          2. Pilih Model AI dari LLM yang Aktif:
+                        </label>
+                        <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                          {getAvailableModelsForProfile(drawerLLMProfileId).length} model terdeteksi
+                        </span>
+                      </div>
+                      <select
+                        value={drawerLLMModel}
+                        onChange={(e) => setDrawerLLMModel(e.target.value)}
+                        className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="">
+                          {drawerLLMProfileId
+                            ? `Model Utama Provider (${llms.find((l) => l.id === drawerLLMProfileId)?.model || "Default"})`
+                            : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
+                        </option>
+                        {getAvailableModelsForProfile(drawerLLMProfileId).map((m) => (
+                          <option key={m} value={m}>
+                            {m} {m === (llms.find((l) => l.id === drawerLLMProfileId)?.model || defaultLLM?.model) ? "★ (Model Utama)" : ""}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Clickable tags for available models */}
+                      {getAvailableModelsForProfile(drawerLLMProfileId).length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                          <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-1">
+                            Model yang aktif di provider ini:
+                          </span>
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                            {getAvailableModelsForProfile(drawerLLMProfileId).slice(0, 10).map((m) => {
+                              const isSelected = drawerLLMModel === m || (!drawerLLMModel && m === (llms.find((l) => l.id === drawerLLMProfileId)?.model || defaultLLM?.model));
+                              return (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setDrawerLLMModel(m)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                                    isSelected
+                                      ? "bg-accent/15 text-accent border-accent/40 font-semibold"
+                                      : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                                  }`}
+                                >
+                                  {m}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
                       <Button
                         size="sm"
                         onClick={handleUpdateAgentLLM}
                         isLoading={updatingLLM}
-                        disabled={drawerLLMProfileId === (selectedAgent.llm_profile_id || "")}
+                        disabled={
+                          drawerLLMProfileId === (selectedAgent.llm_profile_id || "") &&
+                          drawerLLMModel === (selectedAgent.llm_model || "")
+                        }
                       >
-                        Terapkan
+                        Terapkan Perubahan Model
                       </Button>
                     </div>
                   </div>
@@ -670,25 +764,87 @@ export default function WorkforcePage() {
                 </div>
               </div>
 
-              <div>
-                <label className="font-medium block mb-1">Model LLM / Engine</label>
-                <select
-                  value={newLLMProfileId}
-                  onChange={(e) => setNewLLMProfileId(e.target.value)}
-                  className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                >
-                  <option value="">
-                    Gunakan Default Sistem ({llms.find((l) => l.is_default)?.model || "gemini-2.0-flash"})
-                  </option>
-                  {llms.map((llm) => (
-                    <option key={llm.id} value={llm.id}>
-                      {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
+              {/* LLM Provider & Model Assignment */}
+              <div className="space-y-2 p-3 rounded bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50 border border-borderBase-light dark:border-borderBase-dark">
+                <div>
+                  <label className="font-medium block mb-1 text-[11px]">1. Pilih LLM Provider</label>
+                  <select
+                    value={newLLMProfileId}
+                    onChange={(e) => {
+                      const profId = e.target.value;
+                      setNewLLMProfileId(profId);
+                      const prof = llms.find((l) => l.id === profId);
+                      if (prof) {
+                        setNewLLMModel(prof.model);
+                      } else {
+                        setNewLLMModel("");
+                      }
+                    }}
+                    className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">
+                      Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
                     </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1">
-                  Pilih model LLM spesifik untuk persona agen ini, atau biarkan default sistem.
-                </p>
+                    {llms.map((llm) => (
+                      <option key={llm.id} value={llm.id}>
+                        {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-medium text-[11px]">2. Pilih Model AI dari LLM yang Aktif</label>
+                    <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                      {getAvailableModelsForProfile(newLLMProfileId).length} model terdeteksi
+                    </span>
+                  </div>
+                  <select
+                    value={newLLMModel}
+                    onChange={(e) => setNewLLMModel(e.target.value)}
+                    className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">
+                      {newLLMProfileId
+                        ? `Model Utama Provider (${llms.find((l) => l.id === newLLMProfileId)?.model || "Default"})`
+                        : `Model Default Sistem (${defaultLLM?.model || "gemini-3.8-flash"})`}
+                    </option>
+                    {getAvailableModelsForProfile(newLLMProfileId).map((m) => (
+                      <option key={m} value={m}>
+                        {m} {m === (llms.find((l) => l.id === newLLMProfileId)?.model || defaultLLM?.model) ? "★ (Model Utama)" : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Clickable tags for available models */}
+                  {getAvailableModelsForProfile(newLLMProfileId).length > 0 && (
+                    <div className="mt-2 pt-1.5 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                      <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-1">
+                        Model yang aktif di provider ini:
+                      </span>
+                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                        {getAvailableModelsForProfile(newLLMProfileId).slice(0, 10).map((m) => {
+                          const isSelected = newLLMModel === m || (!newLLMModel && m === (llms.find((l) => l.id === newLLMProfileId)?.model || defaultLLM?.model));
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setNewLLMModel(m)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                                isSelected
+                                  ? "bg-accent/15 text-accent border-accent/40 font-semibold"
+                                  : "bg-surface-light dark:bg-surface-dark border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>

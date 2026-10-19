@@ -308,13 +308,16 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
         .map((c) => c.trim())
         .filter((c) => c.length > 0);
 
+      const parsedPoints = Number(newPoints);
+      const safePoints = isNaN(parsedPoints) || parsedPoints < 0 ? 1.0 : parsedPoints;
+
       const payload = {
         project_id: projectId,
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
         type: newType,
         priority: newPriority,
-        estimate_points: newPoints,
+        estimate_points: safePoints,
         acceptance_criteria: criteriaList,
         definition_of_done: ["Code merged", "Passing tests", "Audit review recorded"],
         sprint_id: targetSprintForNewItem || undefined,
@@ -327,8 +330,20 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
       });
 
       if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || "Failed to create work item");
+        let errorMsg = "Failed to create work item";
+        try {
+          const errJson = await res.json();
+          if (typeof errJson.detail === "string") {
+            errorMsg = errJson.detail;
+          } else if (Array.isArray(errJson.detail)) {
+            errorMsg = errJson.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+          } else if (errJson.message) {
+            errorMsg = errJson.message;
+          }
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMsg);
       }
 
       setIsCreateItemModalOpen(false);

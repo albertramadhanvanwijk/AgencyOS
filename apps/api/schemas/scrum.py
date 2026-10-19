@@ -3,11 +3,11 @@ from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
 
 class WorkItemBase(BaseModel):
-    title: str = Field(..., min_length=2, max_length=256)
+    title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = None
     type: str = Field(default="task") # epic, story, task, subtask, bug
     priority: str = Field(default="medium") # critical, high, medium, low
-    estimate_points: float = Field(default=1.0, ge=0.5)
+    estimate_points: float = Field(default=1.0, ge=0.0)
     acceptance_criteria: List[str] = Field(default_factory=list)
     definition_of_done: List[str] = Field(default_factory=list)
     assignee_agent_id: Optional[str] = None

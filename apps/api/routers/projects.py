@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.core.config import settings
-from apps.api.models import Project, Sprint, WorkItem, AuditEvent
+from apps.api.models import Project, Sprint, WorkItem, AuditEvent, AIAgent
 from apps.api.schemas.project import ProjectCreate, ProjectOut, SprintCreate, SprintOut
 from apps.api.schemas.scrum import WorkItemCreate, WorkItemOut
 from apps.api.schemas.scheduler import SprintCapacityOut
@@ -311,26 +311,40 @@ def create_project_work_item(
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Increment counter and generate key
+    # Safely generate unique key without collision
     p.item_counter += 1
     generated_key = f"{p.key}-{p.item_counter}"
+    while db.query(WorkItem).filter(WorkItem.key == generated_key).first():
+        p.item_counter += 1
+        generated_key = f"{p.key}-{p.item_counter}"
 
-    # Keep sprint_id as specified (None means Product Backlog)
-    sprint_id = item_in.sprint_id if item_in.sprint_id else None
+    # Clean & validate sprint_id
+    sprint_id = item_in.sprint_id.strip() if item_in.sprint_id and item_in.sprint_id.strip() else None
+    if sprint_id:
+        sprint_exists = db.query(Sprint).filter(Sprint.id == sprint_id).first()
+        if not sprint_exists:
+            sprint_id = None
+
+    # Clean & validate assignee_agent_id to avoid foreign key violations
+    assignee_id = item_in.assignee_agent_id.strip() if item_in.assignee_agent_id and item_in.assignee_agent_id.strip() else None
+    if assignee_id:
+        agent_exists = db.query(AIAgent).filter(AIAgent.id == assignee_id).first()
+        if not agent_exists:
+            assignee_id = None
 
     item = WorkItem(
         project_id=p.id,
         sprint_id=sprint_id,
         key=generated_key,
-        type=item_in.type,
+        type=item_in.type or "task",
         title=item_in.title.strip(),
-        description=item_in.description,
+        description=item_in.description.strip() if item_in.description and item_in.description.strip() else None,
         status="backlog", # Always start in backlog
-        priority=item_in.priority,
-        estimate_points=item_in.estimate_points,
-        acceptance_criteria=item_in.acceptance_criteria,
-        definition_of_done=item_in.definition_of_done,
-        assignee_agent_id=item_in.assignee_agent_id,
+        priority=item_in.priority or "medium",
+        estimate_points=item_in.estimate_points if item_in.estimate_points is not None else 1.0,
+        acceptance_criteria=item_in.acceptance_criteria or [],
+        definition_of_done=item_in.definition_of_done or ["Code merged", "Passing tests", "Audit review recorded"],
+        assignee_agent_id=assignee_id,
     )
     db.add(item)
     db.flush()

@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   X,
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   Clock,
   User,
@@ -216,6 +217,7 @@ export default function ScrumBoardPage({
   // Create Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newType, setNewType] = useState("task");
@@ -223,6 +225,7 @@ export default function ScrumBoardPage({
   const [newPoints, setNewPoints] = useState(2.0);
   const [newCriteria, setNewCriteria] = useState("");
   const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [newSprintId, setNewSprintId] = useState("");
 
   // Inspect Modal
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
@@ -653,17 +656,36 @@ export default function ScrumBoardPage({
     }
   };
 
+  // Active sprint helper
+  const activeSprint = sprints.find((s) => s.status === "active");
+
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      setCreateError("Judul task wajib diisi.");
+      return;
+    }
 
     try {
       setCreateSubmitting(true);
+      setCreateError(null);
       setTransitionError(null);
       const criteriaList = newCriteria
         .split("\n")
         .map((c) => c.trim())
         .filter((c) => c.length > 0);
+
+      const parsedPoints = Number(newPoints);
+      const safePoints = isNaN(parsedPoints) || parsedPoints < 0 ? 1.0 : parsedPoints;
+      
+      let resolvedSprintId: string | undefined = undefined;
+      if (newSprintId === "none") {
+        resolvedSprintId = undefined;
+      } else if (newSprintId) {
+        resolvedSprintId = newSprintId;
+      } else if (activeSprint?.id) {
+        resolvedSprintId = activeSprint.id;
+      }
 
       const payload = {
         project_id: projectId,
@@ -671,10 +693,11 @@ export default function ScrumBoardPage({
         description: newDesc.trim() || undefined,
         type: newType,
         priority: newPriority,
-        estimate_points: newPoints,
+        estimate_points: safePoints,
         acceptance_criteria: criteriaList,
         definition_of_done: ["Code merged", "Passing tests", "Audit review recorded"],
-        assignee_agent_id: newAssigneeId || undefined,
+        assignee_agent_id: newAssigneeId && newAssigneeId.trim() ? newAssigneeId.trim() : undefined,
+        sprint_id: resolvedSprintId,
       };
 
       const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/work-items`, {
@@ -684,28 +707,36 @@ export default function ScrumBoardPage({
       });
 
       if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.detail || "Failed to create work item");
+        let errorMsg = "Gagal membuat task baru.";
+        try {
+          const errJson = await res.json();
+          if (typeof errJson.detail === "string") {
+            errorMsg = errJson.detail;
+          } else if (Array.isArray(errJson.detail)) {
+            errorMsg = errJson.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+          } else if (errJson.message) {
+            errorMsg = errJson.message;
+          }
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMsg);
       }
 
       setIsCreateModalOpen(false);
       setNewTitle("");
       setNewDesc("");
       setNewCriteria("");
+      setCreateError(null);
       await fetchBoardData();
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setTransitionError(err.message);
-      } else {
-        setTransitionError("Failed to create work item");
-      }
+      const msg = err instanceof Error ? err.message : "Gagal membuat task baru.";
+      setCreateError(msg);
+      setTransitionError(msg);
     } finally {
       setCreateSubmitting(false);
     }
   };
-
-  // Filter items based on selectedSprintFilter
-  const activeSprint = sprints.find((s) => s.status === "active");
   const filteredBoardItems = items.filter((item) => {
     if (selectedSprintFilter === "all") return true;
     if (selectedSprintFilter === "active") {
@@ -737,7 +768,11 @@ export default function ScrumBoardPage({
             </Button>
             <Button
               size="sm"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setCreateError(null);
+                setNewSprintId(activeSprint?.id || "");
+                setIsCreateModalOpen(true);
+              }}
               leftIcon={<Plus className="w-3.5 h-3.5" />}
             >
               New Work Item
@@ -1027,238 +1062,51 @@ export default function ScrumBoardPage({
                         draggable
                         onDragStart={(e) => handleDragStart(e, item.id)}
                         onDragEnd={handleDragEnd}
-                        className={`p-3 rounded-lg bg-surface-light dark:bg-surface-dark border space-y-2 shadow-xs transition-all cursor-grab active:cursor-grabbing hover:border-accent/40 ${
+                        onClick={() => setSelectedItem(item)}
+                        className={`p-3 rounded-lg bg-surface-light dark:bg-surface-dark border space-y-2.5 shadow-xs transition-all cursor-grab active:cursor-grabbing hover:border-accent/50 hover:shadow-sm ${
                           draggedItemId === item.id
                             ? "opacity-40 scale-[0.98] border-dashed border-accent"
                             : "border-borderBase-light dark:border-borderBase-dark"
                         }`}
                       >
-                        {/* Card Header */}
-                        <div className="flex items-center justify-between text-[11px] gap-1.5">
+                        {/* Card Header: Key & Priority */}
+                        <div className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 shrink-0 cursor-grab" />
-                            <span className="font-mono font-semibold text-accent shrink-0">{item.key}</span>
-                            <PriorityIndicator level={item.priority as PriorityLevel} showLabel={false} />
+                            <span className="font-mono font-semibold text-accent">{item.key}</span>
                           </div>
-                          <span className="uppercase text-[9px] font-semibold px-1.5 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark shrink-0">
-                            {item.type}
-                          </span>
+                          <PriorityIndicator level={item.priority as PriorityLevel} showLabel={false} />
                         </div>
 
                         {/* Title */}
-                        <h4
-                          onClick={() => setSelectedItem(item)}
-                          className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark hover:text-accent cursor-pointer line-clamp-2 leading-snug"
-                        >
+                        <h4 className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark line-clamp-2 leading-snug">
                           {item.title}
                         </h4>
 
-                        {/* Assignee & Metrics Row (Clean & Unified) */}
-                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 gap-1.5 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0 text-textMuted-light dark:text-textMuted-dark">
-                            <User className="w-3 h-3 shrink-0" />
-                            <span className="truncate max-w-[85px] text-[11px]" title={item.assignee_name || "Belum Ditugaskan"}>
-                              {item.assignee_name || "Unassigned"}
+                        {/* Bottom Row: Assigned Agent (Mandatory) */}
+                        <div className="flex items-center justify-between text-xs pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 gap-2 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0" title={item.assignee_name || "Belum ditugaskan"}>
+                            <User className="w-3.5 h-3.5 text-accent shrink-0" />
+                            <span className="font-medium text-xs text-textPrimary-light dark:text-textPrimary-dark truncate">
+                              {item.assignee_name || (
+                                <span className="text-textMuted-light dark:text-textMuted-dark italic font-normal text-[11px]">
+                                  Belum ditugaskan
+                                </span>
+                              )}
                             </span>
-                            {(() => {
-                              const assigned = agents.find((a) => a.id === item.assignee_agent_id);
-                              if (assigned?.llm_model) {
-                                return (
-                                  <span
-                                    className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-[70px] truncate shrink-0"
-                                    title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
-                                  >
-                                    <Sparkles className="w-2 h-2 shrink-0 text-purple-500" />
-                                    <span className="truncate">{getCleanModelBadge(assigned.llm_model)}</span>
-                                  </span>
-                                );
-                              }
-                              return null;
-                            })()}
                           </div>
-                          <div className="flex items-center gap-1 font-mono text-[10px] text-textMuted-light dark:text-textMuted-dark shrink-0">
-                            <span>{item.estimate_points} pts</span>
-                            {item.acceptance_criteria.length > 0 && (
-                              <>
-                                <span>•</span>
-                                <span>{item.acceptance_criteria.length} AC</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Card Footer Actions with Clean Auto-Layout */}
-                        <div className="pt-1.5 border-t border-borderBase-light/60 dark:border-borderBase-dark/60">
-                          {col.id === "backlog" && (
+                          {(col.id === "ready" || col.id === "in_progress") && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleTransition(item.id, "ready");
+                                handleTriggerRun(item.id);
                               }}
-                              title="Pindahkan ke Ready"
-                              className="w-full py-1.5 px-2 rounded text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center justify-center gap-1.5 min-w-0"
+                              disabled={triggeringRunId === item.id}
+                              title={triggeringRunId === item.id ? "Sedang menjalankan agen..." : "Jalankan Agen"}
+                              className="p-1 rounded text-accent hover:bg-accent/10 active:bg-accent/20 transition-colors shrink-0 disabled:opacity-50"
                             >
-                              <span className="truncate">Siap Dikerjakan (Ready)</span>
-                              <ArrowRight className="w-3 h-3 shrink-0" />
+                              <Sparkles className={`w-3.5 h-3.5 ${triggeringRunId === item.id ? "animate-spin" : ""}`} />
                             </button>
-                          )}
-
-                          {col.id === "ready" && (
-                            <div className="space-y-1.5">
-                              {(() => {
-                                const assigned = agents.find((a) => a.id === item.assignee_agent_id);
-                                return (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleTriggerRun(item.id);
-                                    }}
-                                    disabled={triggeringRunId === item.id}
-                                    title={`Jalankan agen untuk tugas ini ${assigned?.llm_model ? `(Model: ${assigned.llm_model})` : ""}`}
-                                    className="w-full py-1.5 px-2.5 rounded text-[11px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center gap-1.5 shadow-xs overflow-hidden min-w-0"
-                                  >
-                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate">
-                                      {triggeringRunId === item.id ? "Menjalankan..." : "Run Agent"}
-                                    </span>
-                                    {assigned?.llm_model && triggeringRunId !== item.id && (
-                                      <span className="text-[9px] font-mono opacity-85 bg-black/20 dark:bg-white/15 px-1.5 py-0.2 rounded font-normal shrink-0 truncate max-w-[75px]">
-                                        {getCleanModelBadge(assigned.llm_model)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })()}
-                              <div className="flex items-center justify-between text-[10px] text-textMuted-light dark:text-textMuted-dark px-0.5">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "backlog");
-                                  }}
-                                  className="hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors flex items-center gap-0.5"
-                                >
-                                  <ArrowLeft className="w-2.5 h-2.5 shrink-0" />
-                                  <span>Backlog</span>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "in_progress");
-                                  }}
-                                  className="hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors flex items-center gap-0.5"
-                                >
-                                  <span>Mulai Manual</span>
-                                  <ArrowRight className="w-2.5 h-2.5 shrink-0" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {col.id === "in_progress" && (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              {(() => {
-                                const assigned = agents.find((a) => a.id === item.assignee_agent_id);
-                                return (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleTriggerRun(item.id);
-                                    }}
-                                    disabled={triggeringRunId === item.id}
-                                    title={`Jalankan ulang agen ${assigned?.llm_model ? `(Model: ${assigned.llm_model})` : ""}`}
-                                    className="flex-1 py-1.5 px-2 rounded text-[11px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center gap-1 shadow-xs overflow-hidden min-w-0"
-                                  >
-                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="truncate">
-                                      {triggeringRunId === item.id ? "Running..." : "Run"}
-                                    </span>
-                                    {assigned?.llm_model && triggeringRunId !== item.id && (
-                                      <span className="text-[9px] font-mono opacity-85 bg-black/20 dark:bg-white/15 px-1 py-0.2 rounded font-normal shrink-0 truncate max-w-[65px]">
-                                        {getCleanModelBadge(assigned.llm_model)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })()}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTransition(item.id, "in_review");
-                                }}
-                                title="Kirim untuk review"
-                                className="py-1.5 px-2.5 rounded text-[11px] font-medium bg-status-info/10 text-status-info hover:bg-status-info/20 transition-colors flex items-center gap-1 shrink-0"
-                              >
-                                <span>Review</span>
-                                <ArrowRight className="w-3 h-3 shrink-0" />
-                              </button>
-                            </div>
-                          )}
-
-                          {col.id === "in_review" && (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "in_progress");
-                                  }}
-                                  title="Kembalikan ke In Progress untuk perbaikan"
-                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-medium bg-status-warning/10 text-status-warning hover:bg-status-warning/20 transition-colors flex items-center justify-center gap-1 min-w-0"
-                                >
-                                  <RotateCcw className="w-3 h-3 shrink-0" />
-                                  <span className="truncate">Rework</span>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "done");
-                                  }}
-                                  title="Setujui dan selesaikan tugas"
-                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-semibold bg-status-success/15 text-status-success hover:bg-status-success/25 transition-colors flex items-center justify-center gap-1 min-w-0"
-                                >
-                                  <Check className="w-3 h-3 shrink-0" />
-                                  <span className="truncate">Approve</span>
-                                </button>
-                              </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenLatestRun(item.id);
-                                }}
-                                title="Lihat hasil run dan diff kode"
-                                className="w-full py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5 min-w-0"
-                              >
-                                <Terminal className="w-3 h-3 text-accent shrink-0" />
-                                <span className="truncate">Hasil Run & Diffs</span>
-                              </button>
-                            </div>
-                          )}
-
-                          {col.id === "done" && (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTransition(item.id, "in_review");
-                                }}
-                                title="Buka kembali untuk review ulang"
-                                className="py-1 px-2 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center gap-1 shrink-0"
-                              >
-                                <RotateCcw className="w-3 h-3 shrink-0" />
-                                <span>Reopen</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenLatestRun(item.id);
-                                }}
-                                title="Lihat artefak eksekusi"
-                                className="flex-1 py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5 min-w-0"
-                              >
-                                <FileCode className="w-3 h-3 text-status-success shrink-0" />
-                                <span className="truncate">Lihat Artefak</span>
-                              </button>
-                            </div>
                           )}
                         </div>
                       </div>
@@ -1656,16 +1504,18 @@ export default function ScrumBoardPage({
 
       {/* Create Work Item Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <form
             onSubmit={handleCreateItem}
-            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-md w-full p-5 space-y-4 shadow-xl"
+            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl"
           >
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
               <div>
-                <h3 className="text-base font-semibold">Create Work Item</h3>
+                <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                  Tambah Task Baru
+                </h3>
                 <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                  New Scrum work item in project {project?.key}.
+                  Buat work item baru di project {project?.key || project?.name}.
                 </p>
               </div>
               <button
@@ -1677,26 +1527,37 @@ export default function ScrumBoardPage({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            {createError && (
+              <div className="p-2.5 rounded-lg bg-status-error/10 border border-status-error/30 text-status-error text-xs flex items-center gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="leading-snug">{createError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3.5 text-xs">
               <div>
-                <label className="font-medium block mb-1">Title *</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Judul Task *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Implement isolated Git worktree runner"
+                  placeholder="Contoh: Implementasi isolated Git worktree runner"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="w-full h-9 px-3 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="font-medium block mb-1">Type</label>
+                  <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                    Tipe
+                  </label>
                   <select
                     value={newType}
                     onChange={(e) => setNewType(e.target.value)}
-                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="task">Task</option>
                     <option value="story">Story</option>
@@ -1706,11 +1567,13 @@ export default function ScrumBoardPage({
                 </div>
 
                 <div>
-                  <label className="font-medium block mb-1">Priority</label>
+                  <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                    Prioritas
+                  </label>
                   <select
                     value={newPriority}
                     onChange={(e) => setNewPriority(e.target.value as PriorityLevel)}
-                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
@@ -1720,53 +1583,88 @@ export default function ScrumBoardPage({
                 </div>
 
                 <div>
-                  <label className="font-medium block mb-1">Points</label>
+                  <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                    Points
+                  </label>
                   <input
                     type="number"
                     step="0.5"
-                    min="0.5"
-                    value={newPoints}
-                    onChange={(e) => setNewPoints(parseFloat(e.target.value))}
-                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    min="0"
+                    value={isNaN(newPoints) ? "" : newPoints}
+                    onChange={(e) => setNewPoints(e.target.value === "" ? 1.0 : parseFloat(e.target.value))}
+                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent font-mono"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="font-medium block mb-1">Assigned Agent</label>
-                <select
-                  value={newAssigneeId}
-                  onChange={(e) => setNewAssigneeId(e.target.value)}
-                  className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                >
-                  <option value="">Unassigned</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.title})
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                    Target Sprint
+                  </label>
+                  <select
+                    value={newSprintId}
+                    onChange={(e) => setNewSprintId(e.target.value)}
+                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    {activeSprint && (
+                      <option value={activeSprint.id}>
+                        {activeSprint.name} (Active Sprint)
+                      </option>
+                    )}
+                    {sprints
+                      .filter((s) => s.id !== activeSprint?.id)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.status})
+                        </option>
+                      ))}
+                    <option value="none">Product Backlog (Tanpa Sprint)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                    Tugaskan ke Agen
+                  </label>
+                  <select
+                    value={newAssigneeId}
+                    onChange={(e) => setNewAssigneeId(e.target.value)}
+                    className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">Belum Ditugaskan (Unassigned)</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.title})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="font-medium block mb-1">Acceptance Criteria (1 per line)</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Acceptance Criteria (1 per baris)
+                </label>
                 <textarea
-                  rows={3}
-                  placeholder="e.g. Subprocess execution bounds verified&#10;Path traversal test passes"
+                  rows={2}
+                  placeholder="Contoh:&#10;Subprocess execution bounds verified&#10;Path traversal test passes"
                   value={newCriteria}
                   onChange={(e) => setNewCriteria(e.target.value)}
-                  className="w-full p-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
+                  className="w-full p-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs font-mono"
                 />
               </div>
 
               <div>
-                <label className="font-medium block mb-1">Description</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Deskripsi (Opsional)
+                </label>
                 <textarea
                   rows={2}
-                  placeholder="Context and implementation details..."
+                  placeholder="Konteks dan instruksi pengerjaan..."
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full p-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
+                  className="w-full p-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
                 />
               </div>
             </div>

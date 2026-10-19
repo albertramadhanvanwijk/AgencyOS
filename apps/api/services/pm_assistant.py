@@ -670,4 +670,124 @@ class PMAssistantService:
             "status_now": item.status
         }
 
+    @classmethod
+    def handover_backlog_to_next_sprint(cls, project_id: str, db: Session) -> Dict[str, Any]:
+        """
+        Autonomous Agent Handover:
+        Dewi Lestari scans remaining backlog items, packages them into the next progressive Sprint,
+        assigns best-matched active agents, and transitions the sprint to 'pending_approval' for kickoff.
+        """
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project with ID '{project_id}' not found.")
+
+        # Check if an active sprint is currently running
+        active_sprint = db.query(Sprint).filter(
+            Sprint.project_id == project_id,
+            Sprint.status == "active"
+        ).first()
+        if active_sprint:
+            raise ValueError(f"Sprint '{active_sprint.name}' masih aktif. Selesaikan sprint aktif terlebih dahulu sebelum handover.")
+
+        # Check existing sprints to determine next number
+        existing_sprints = db.query(Sprint).filter(
+            Sprint.project_id == project_id
+        ).order_by(Sprint.created_at.asc()).all()
+        next_num = len(existing_sprints) + 1
+
+        # Check if a planned or pending_approval sprint already exists
+        existing_pending = db.query(Sprint).filter(
+            Sprint.project_id == project_id,
+            Sprint.status.in_(["planning", "pending_approval"])
+        ).order_by(Sprint.created_at.asc()).first()
+
+        # Find all uncompleted work items that are either unassigned to any sprint (sprint_id is None)
+        # or belong to already completed sprints but not done
+        completed_sprint_ids = [s.id for s in existing_sprints if s.status == "completed"]
+
+        from sqlalchemy import or_
+        filters = [WorkItem.project_id == project_id, WorkItem.status != "done"]
+        if completed_sprint_ids:
+            filters.append(or_(WorkItem.sprint_id == None, WorkItem.sprint_id.in_(completed_sprint_ids)))
+        else:
+            filters.append(WorkItem.sprint_id == None)
+
+        backlog_items = db.query(WorkItem).filter(*filters).all()
+
+        if not backlog_items:
+            raise ValueError("Tidak ada user story backlog tersisa yang perlu dikerjakan. Seluruh pekerjaan proyek telah tuntas!")
+
+        # Gather active workforce agents for intelligent matching
+        agents = db.query(AIAgent).filter(AIAgent.lifecycle_state == "active").all()
+        fe_agent = next((a for a in agents if "react" in (a.role.code.lower() if a.role else "") or "frontend" in (a.name.lower() if a.name else "") or "bayu" in a.name.lower() or "kairo" in a.name.lower()), agents[0] if agents else None)
+        be_agent = next((a for a in agents if "arch" in (a.role.code.lower() if a.role else "") or "backend" in (a.name.lower() if a.name else "") or "atlas" in a.name.lower() or "aditya" in a.name.lower()), agents[0] if agents else None)
+        qa_agent = next((a for a in agents if "qa" in (a.role.code.lower() if a.role else "") or "sentinel" in a.name.lower() or "fajar" in a.name.lower()), agents[0] if agents else None)
+
+        if existing_pending:
+            # Package backlog into this existing sprint
+            target_sprint = existing_pending
+            target_sprint.status = "pending_approval"
+        else:
+            # Create a brand new Sprint automatically
+            total_sp = sum(i.estimate_points or 2.0 for i in backlog_items)
+            target_sprint = Sprint(
+                project_id=project_id,
+                name=f"Sprint {next_num}: Lanjutan Delivery & Eksekusi Backlog",
+                goal=f"Menuntaskan {len(backlog_items)} user stories backlog untuk penyelesaian rilis {project.name}.",
+                capacity_points=max(int(total_sp), 20),
+                status="pending_approval"
+            )
+            db.add(target_sprint)
+            db.flush()
+
+        # Allocate stories to this sprint and assign agents
+        for item in backlog_items:
+            item.sprint_id = target_sprint.id
+            if item.status in ["backlog", "in_progress", "in_review", "blocked"]:
+                item.status = "ready"
+
+            # Auto-assign agent if empty
+            if not item.assignee_agent_id:
+                title_lower = (item.title or "").lower()
+                if any(k in title_lower for k in ["ui", "frontend", "halaman", "css", "layout", "responsive", "tampilan", "landing"]):
+                    item.assignee_agent_id = fe_agent.id if fe_agent else None
+                elif any(k in title_lower for k in ["test", "qa", "verifikasi", "security", "audit", "validasi"]):
+                    item.assignee_agent_id = qa_agent.id if qa_agent else None
+                else:
+                    item.assignee_agent_id = be_agent.id if be_agent else None
+
+        db.add(AuditEvent(
+            actor="Dewi Lestari (Scrum Master)",
+            action="AUTONOMOUS_SPRINT_HANDOVER",
+            target_type="SPRINT",
+            target_id=target_sprint.id,
+            project_id=project_id,
+            policy_basis="POL-SCRUM-AUTONOMOUS-HANDOVER-V1",
+            details={
+                "sprint_name": target_sprint.name,
+                "packaged_stories_count": len(backlog_items),
+                "total_points": sum(i.estimate_points or 0 for i in backlog_items),
+                "status": target_sprint.status
+            }
+        ))
+
+        db.commit()
+        db.refresh(target_sprint)
+
+        return {
+            "status": "success",
+            "message": f"Dewi Lestari berhasil melakukan handover dan menyusun '{target_sprint.name}' dengan {len(backlog_items)} user stories. Sprint kini siap ditinjau di Kickoff Gate.",
+            "sprint_id": target_sprint.id,
+            "sprint_name": target_sprint.name,
+            "packaged_items_count": len(backlog_items),
+            "sprint": {
+                "id": target_sprint.id,
+                "name": target_sprint.name,
+                "goal": target_sprint.goal,
+                "capacity_points": target_sprint.capacity_points,
+                "status": target_sprint.status,
+                "items_count": len(backlog_items)
+            }
+        }
+
 pm_assistant = PMAssistantService()

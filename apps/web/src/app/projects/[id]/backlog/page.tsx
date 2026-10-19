@@ -148,12 +148,8 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
   const [newCriteria, setNewCriteria] = useState("");
   const [targetSprintForNewItem, setTargetSprintForNewItem] = useState<string>("");
 
-  // Create / Start Next Sprint Modal
-  const [isSprintModalOpen, setIsSprintModalOpen] = useState(false);
-  const [sprintTopic, setSprintTopic] = useState("");
-  const [sprintGoal, setSprintGoal] = useState("");
-  const [sprintCapacityPoints, setSprintCapacityPoints] = useState(20);
-  const [sprintSubmitting, setSprintSubmitting] = useState(false);
+  // Autonomous Sprint Handover State (Dewi Lestari)
+  const [handoverLoading, setHandoverLoading] = useState(false);
   const [expandedSprintIds, setExpandedSprintIds] = useState<Record<string, boolean>>({});
 
   const toggleSprintExpanded = (sprintId: string) => {
@@ -279,44 +275,25 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
     }
   };
 
-  // Create new Sprint
-  const handleCreateSprint = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Autonomous Sprint Handover by Dewi Lestari
+  const handleHandoverNextSprint = async () => {
     try {
-      setSprintSubmitting(true);
+      setHandoverLoading(true);
       setActionError(null);
-
-      const nextNum = sprints.length + 1;
-      const formattedName = sprintTopic.trim()
-        ? `Sprint ${nextNum}: ${sprintTopic.trim()}`
-        : `Sprint ${nextNum}`;
-
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints`, {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/handover-next`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formattedName,
-          goal: sprintGoal.trim() || undefined,
-          capacity_points: sprintCapacityPoints || 20,
-          status: "planning", // creates as planning/future sprint
-        }),
       });
-
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.detail || "Failed to create sprint container");
+        throw new Error(errJson.detail || "Gagal melakukan handover sprint.");
       }
-
-      setIsSprintModalOpen(false);
-      setSprintTopic("");
-      setSprintGoal("");
       await fetchData();
     } catch (err: unknown) {
       if (err instanceof Error) {
         setActionError(err.message);
       }
     } finally {
-      setSprintSubmitting(false);
+      setHandoverLoading(false);
     }
   };
 
@@ -491,14 +468,17 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
             >
               Refresh
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSprintModalOpen(true)}
-              leftIcon={<Calendar className="w-3.5 h-3.5" />}
-            >
-              + Buat Sprint Baru
-            </Button>
+            {productBacklogItems.length > 0 && !activeSprint && !sprints.some((s) => s.status === "pending_approval") && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleHandoverNextSprint}
+                isLoading={handoverLoading}
+                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+              >
+                Handover ke Dewi: Paketkan Sprint Baru
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => {
@@ -687,13 +667,30 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                 );
               })()
             ) : (
-              <div className="p-4 rounded-lg border border-dashed border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark flex items-center justify-between text-xs">
-                <span className="text-textMuted-light dark:text-textMuted-dark">
-                  Tidak ada Sprint yang sedang aktif saat ini.
-                </span>
-                <Button size="sm" onClick={() => setIsSprintModalOpen(true)} leftIcon={<Play className="w-3.5 h-3.5" />}>
-                  Mulai Sprint Baru
-                </Button>
+              <div className="p-4 rounded-lg border border-dashed border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2 h-2 rounded-full bg-textMuted-light dark:bg-textMuted-dark" />
+                  <span className="text-textMuted-light dark:text-textMuted-dark">
+                    Tidak ada Sprint yang sedang aktif saat ini.
+                  </span>
+                </div>
+                {sprints.some((s) => s.status === "pending_approval") ? (
+                  <Link href={`/projects/${projectId}/board`}>
+                    <Button size="sm" variant="primary" leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}>
+                      Tinjau & Setujui Sprint di Board →
+                    </Button>
+                  </Link>
+                ) : productBacklogItems.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleHandoverNextSprint}
+                    isLoading={handoverLoading}
+                    leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                  >
+                    Handover ke Dewi: Paketkan ke Sprint Baru →
+                  </Button>
+                ) : null}
               </div>
             )}
 
@@ -983,6 +980,35 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
 
           {/* SECTION 3: PRODUCT BACKLOG INVENTORY (Gudang Backlog Jira) */}
           <div className="space-y-3 pt-4 border-t border-borderBase-light dark:border-borderBase-dark">
+            {/* Autonomous Backlog Handover Banner (Dewi Lestari) */}
+            {productBacklogItems.length > 0 && !activeSprint && !sprints.some((s) => s.status === "pending_approval") && (
+              <div className="p-4 rounded-lg bg-accent/10 border border-accent/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs mb-3 animate-in fade-in">
+                <div className="flex items-start space-x-3 text-textPrimary-light dark:text-textPrimary-dark">
+                  <Sparkles className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-semibold text-sm">Autonomous Sprint Handover (Dewi Lestari)</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-accent/20 text-accent border border-accent/30">
+                        {productBacklogItems.length} Backlog Items Ready
+                      </span>
+                    </div>
+                    <p className="text-textMuted-light dark:text-textMuted-dark mt-0.5">
+                      Dewi Lestari dapat otomatis memaketkan seluruh sisa user stories backlog ini ke sprint berikutnya, mengalokasikan tim agen, dan menyiapkan Kickoff Gate tanpa pembuatan manual.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleHandoverNextSprint}
+                  isLoading={handoverLoading}
+                  leftIcon={<Sparkles className="w-4 h-4" />}
+                >
+                  Paketkan ke Sprint Baru →
+                </Button>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-bold text-textPrimary-light dark:text-textPrimary-dark flex items-center space-x-2">
@@ -1276,84 +1302,6 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
               </Button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Create Sprint Modal */}
-      {isSprintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <form
-            onSubmit={handleCreateSprint}
-            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-md w-full p-5 space-y-4 shadow-xl"
-          >
-            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div>
-                <h3 className="text-base font-semibold flex items-center space-x-2">
-                  <Calendar className="w-4 h-4 text-accent" />
-                  <span>Buat Wadah Sprint Baru</span>
-                </h3>
-                <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                  Nomor urut otomatis: <strong>Sprint {sprints.length + 1}</strong>
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSprintModalOpen(false)}
-                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-medium block mb-1">Topik / Sub-Judul Sprint</label>
-                <div className="flex items-center space-x-2">
-                  <span className="px-2.5 py-1.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded font-mono font-semibold text-accent text-xs">
-                    Sprint {sprints.length + 1}:
-                  </span>
-                  <input
-                    type="text"
-                    required
-                    value={sprintTopic}
-                    onChange={(e) => setSprintTopic(e.target.value)}
-                    placeholder="e.g. Core API & Database Migration"
-                    className="flex-1 h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-medium block mb-1">Goal Sprint</label>
-                <input
-                  type="text"
-                  value={sprintGoal}
-                  onChange={(e) => setSprintGoal(e.target.value)}
-                  placeholder="Tujuan spesifik yang ingin dicapai tim"
-                  className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
-
-              <div>
-                <label className="font-medium block mb-1">Kapasitas Target (Story Points)</label>
-                <input
-                  type="number"
-                  value={sprintCapacityPoints}
-                  onChange={(e) => setSprintCapacityPoints(Number(e.target.value))}
-                  className="w-28 h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
-              <Button size="sm" variant="outline" type="button" onClick={() => setIsSprintModalOpen(false)}>
-                Batal
-              </Button>
-              <Button size="sm" variant="primary" type="submit" isLoading={sprintSubmitting}>
-                Buat Sprint →
-              </Button>
-            </div>
-          </form>
         </div>
       )}
 

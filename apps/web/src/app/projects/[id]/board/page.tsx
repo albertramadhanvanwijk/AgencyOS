@@ -350,6 +350,7 @@ export default function ScrumBoardPage({
   // Sprint Start Approval State
   const [isSprintApprovalOpen, setIsSprintApprovalOpen] = useState(false);
   const [approvingSprint, setApprovingSprint] = useState(false);
+  const [handoverLoading, setHandoverLoading] = useState(false);
 
 
 
@@ -518,6 +519,26 @@ export default function ScrumBoardPage({
       alert(`Approval Error: ${err.message}`);
     } finally {
       setApprovingSprint(false);
+    }
+  };
+
+  const handleHandoverNextSprint = async () => {
+    try {
+      setHandoverLoading(true);
+      setTransitionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/handover-next`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal melakukan handover sprint.");
+      }
+      await fetchBoardData();
+      setIsSprintApprovalOpen(true);
+    } catch (err: any) {
+      alert(`Handover Error: ${err.message}`);
+    } finally {
+      setHandoverLoading(false);
     }
   };
 
@@ -1316,7 +1337,38 @@ export default function ScrumBoardPage({
         </div>
       )}
 
-      {/* Active Sprint Banner with Review Action */}
+      {/* Autonomous Backlog Handover Banner (Dewi Lestari) */}
+      {!activeSprint && !pendingSprint && items.some(i => (!i.sprint_id || sprints.find(s => s.id === i.sprint_id)?.status === "completed") && i.status !== "done") && (
+        <div className="p-4 rounded-lg bg-accent/10 border border-accent/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+          <div className="flex items-start space-x-3 text-textPrimary-light dark:text-textPrimary-dark">
+            <Sparkles className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-semibold text-sm">Autonomous Sprint Handover (Dewi Lestari)</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-accent/20 text-accent border border-accent/30">
+                  Ready for Packaging
+                </span>
+              </div>
+              <p className="text-textMuted-light dark:text-textMuted-dark mt-0.5">
+                Terdapat <strong>{items.filter(i => (!i.sprint_id || sprints.find(s => s.id === i.sprint_id)?.status === "completed") && i.status !== "done").length} backlog</strong> tersisa dari sprint sebelumnya. Biarkan Dewi Lestari memaketkan sisa pekerjaan ke Sprint baru, mengatur alokasi agen, dan menyiapkan Kickoff Gate secara otomatis tanpa perlu pembuatan sprint manual.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 self-end sm:self-center shrink-0">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleHandoverNextSprint}
+              isLoading={handoverLoading}
+              leftIcon={<Sparkles className="w-4 h-4" />}
+            >
+              Handover ke Dewi: Paketkan ke Sprint Baru →
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Active Sprint Banner */}
       {activeSprint && activeSprint.status === "active" && items.length > 0 && (
         <div className="p-3 rounded-lg bg-status-success/10 border border-status-success/30 flex items-center justify-between text-xs">
           <div className="flex items-center space-x-2.5">
@@ -1325,19 +1377,12 @@ export default function ScrumBoardPage({
               <strong>{activeSprint.name}</strong> sedang berlangsung • {items.filter(i => i.sprint_id === activeSprint.id && i.status === "done").length} dari {items.filter(i => i.sprint_id === activeSprint.id).length} Stories selesai
             </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setReviewNotes("");
-              setRetroResult(null);
-              setTransitionError(null);
-              setIsCompleteSprintModalOpen(true);
-            }}
-            leftIcon={<Award className="w-3.5 h-3.5 text-accent" />}
-          >
-            Review & Selesaikan Sprint (Retro)
-          </Button>
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-mono text-status-success font-semibold px-2.5 py-1 rounded bg-status-success/15 border border-status-success/30 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse" />
+              Live Execution
+            </span>
+          </div>
         </div>
       )}
 
@@ -4153,10 +4198,10 @@ export default function ScrumBoardPage({
       {/* 2. Sprint Start Approval Modal */}
       {isSprintApprovalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-in fade-in">
-            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in overflow-hidden">
+            <div className="flex items-start justify-between p-5 pb-3 border-b border-borderBase-light dark:border-borderBase-dark shrink-0">
               <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-lg bg-status-warning/15 text-status-warning flex items-center justify-center font-bold">
+                <div className="w-9 h-9 rounded-lg bg-status-warning/15 text-status-warning flex items-center justify-center font-bold shrink-0">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
@@ -4183,72 +4228,74 @@ export default function ScrumBoardPage({
               const totalPoints = sprintItems.reduce((acc, curr) => acc + (curr.estimate_points || 0), 0);
 
               return (
-                <div className="space-y-4 text-xs">
-                  {/* Sprint Meta Card */}
-                  <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm text-textPrimary-light dark:text-textPrimary-dark">
-                        {targetSprint?.name || "Sprint 1"}
-                      </span>
-                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
-                        {totalPoints} Story Points
-                      </span>
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                  <div className="p-5 overflow-y-auto space-y-4 text-xs flex-1">
+                    {/* Sprint Meta Card */}
+                    <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm text-textPrimary-light dark:text-textPrimary-dark">
+                          {targetSprint?.name || "Sprint 1"}
+                        </span>
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
+                          {totalPoints} Story Points
+                        </span>
+                      </div>
+                      <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                        <strong>Sprint Goal:</strong> {targetSprint?.goal || "Eksekusi backlog fase 1"}
+                      </p>
                     </div>
-                    <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
-                      <strong>Sprint Goal:</strong> {targetSprint?.goal || "Eksekusi backlog fase 1"}
-                    </p>
-                  </div>
 
-                  {/* 5-Point Quality & Readiness Checklist */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
-                      Kriteria Kesiapan Sprint (Sprint Readiness Checklist):
-                    </span>
-                    <div className="space-y-1.5 p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark">
-                      {[
-                        { title: "Sprint Goal Selaras", desc: "Sasaran sprint disetujui dan memecah tujuan project secara terukur." },
-                        { title: "User Stories & Kriteria Terdefinisi", desc: `${sprintItems.length} stories telah dilengkapi Acceptance Criteria & DoD.` },
-                        { title: "Beban Kapasitas Sesuai", desc: `Total ${totalPoints} SP berada di dalam batas velocity tim agen.` },
-                        { title: "Penugasan Agen Otomatis", desc: "Setiap story telah dialokasikan ke agen dengan kapabilitas yang sesuai." },
-                        { title: "Workspace Git Terisolasi", desc: "Eksekusi akan berjalan dalam Git worktree aman tanpa intervensi manual." },
-                      ].map((chk, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
-                          <CheckCircle2 className="w-4 h-4 text-status-success shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold">{chk.title}</span>
-                            <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">{chk.desc}</span>
+                    {/* 5-Point Quality & Readiness Checklist */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                        Kriteria Kesiapan Sprint (Sprint Readiness Checklist):
+                      </span>
+                      <div className="space-y-1.5 p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark">
+                        {[
+                          { title: "Sprint Goal Selaras", desc: "Sasaran sprint disetujui dan memecah tujuan project secara terukur." },
+                          { title: "User Stories & Kriteria Terdefinisi", desc: `${sprintItems.length} stories telah dilengkapi Acceptance Criteria & DoD.` },
+                          { title: "Beban Kapasitas Sesuai", desc: `Total ${totalPoints} SP berada di dalam batas velocity tim agen.` },
+                          { title: "Penugasan Agen Otomatis", desc: "Setiap story telah dialokasikan ke agen dengan kapabilitas yang sesuai." },
+                          { title: "Workspace Git Terisolasi", desc: "Eksekusi akan berjalan dalam Git worktree aman tanpa intervensi manual." },
+                        ].map((chk, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
+                            <CheckCircle2 className="w-4 h-4 text-status-success shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-semibold">{chk.title}</span>
+                              <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">{chk.desc}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Stories Preview */}
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
-                      Stories dalam Sprint Ini ({sprintItems.length}):
-                    </span>
-                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                      {sprintItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="p-2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-[11px]"
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="font-mono text-accent font-semibold">{item.key}</span>
-                            <span className="truncate">{item.title}</span>
+                    {/* Stories Preview */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                        Stories dalam Sprint Ini ({sprintItems.length}):
+                      </span>
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                        {sprintItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-[11px]"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-mono text-accent font-semibold">{item.key}</span>
+                              <span className="truncate">{item.title}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-textMuted-light dark:text-textMuted-dark">{item.assignee_name || "Unassigned"}</span>
+                              <span className="font-mono font-semibold">{item.estimate_points} SP</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-textMuted-light dark:text-textMuted-dark">{item.assignee_name || "Unassigned"}</span>
-                            <span className="font-mono font-semibold">{item.estimate_points} SP</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                  <div className="p-4 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between shrink-0 bg-surface-light dark:bg-surface-dark">
                     <Button
                       size="sm"
                       variant="outline"

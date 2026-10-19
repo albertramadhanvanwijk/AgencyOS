@@ -119,3 +119,44 @@ def test_complete_review_sprint_retro(client):
     assert len(complete_data["retrospective"]["went_well"]) > 0
     assert len(complete_data["retrospective"]["action_items"]) > 0
     assert complete_data["next_sprint"]["status"] == "pending_approval"
+
+
+def test_handover_backlog_to_next_sprint(client):
+    # 1. Create project & plan
+    proj_res = client.post("/api/v1/projects", json={
+        "name": "Handover Project",
+        "key": "HAND",
+        "goal": "Autonomous Sprint Handover Platform",
+        "github_repo_mode": "local"
+    })
+    proj_id = proj_res.json()["id"]
+    client.post(f"/api/v1/projects/{proj_id}/pm/auto-plan")
+
+    sprints = client.get(f"/api/v1/projects/{proj_id}/sprints").json()
+    # Complete all 3 initial sprints without finishing stories (simulating user finishing sprints early)
+    for s in sprints:
+        client.post(f"/api/v1/projects/{proj_id}/sprints/{s['id']}/approve-start")
+        client.post(f"/api/v1/projects/{proj_id}/sprints/{s['id']}/complete-review", json={
+            "review_notes": "Selesaikan sprint lebih awal untuk tes handover",
+            "move_unfinished_to": "backlog"
+        })
+
+    # Verify there are items in backlog
+    items = client.get(f"/api/v1/projects/{proj_id}/work-items").json()
+    backlog_items = [i for i in items if not i.get("sprint_id") and i.get("status") != "done"]
+    assert len(backlog_items) > 0
+
+    # 2. Trigger Autonomous Handover by Dewi Lestari
+    handover_res = client.post(f"/api/v1/projects/{proj_id}/sprints/handover-next")
+    assert handover_res.status_code == 200
+    handover_data = handover_res.json()
+    assert handover_data["status"] == "success"
+    assert handover_data["sprint_name"].startswith("Sprint 4")
+    assert handover_data["packaged_items_count"] > 0
+
+    # 3. Verify Sprint 4 exists and is pending_approval
+    updated_sprints = client.get(f"/api/v1/projects/{proj_id}/sprints").json()
+    sprint_4 = next((s for s in updated_sprints if s["name"].startswith("Sprint 4")), None)
+    assert sprint_4 is not None
+    assert sprint_4["status"] == "pending_approval"
+

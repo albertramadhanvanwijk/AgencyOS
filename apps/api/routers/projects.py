@@ -659,6 +659,21 @@ def auto_plan_project(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/{project_id}/sprints/handover-next")
+def handover_next_sprint(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Autonomous Agent Handover: Dewi Lestari packages remaining backlog items
+    into the next sequential Sprint, assigns agents, and queues it for kickoff approval.
+    """
+    try:
+        return pm_assistant.handover_backlog_to_next_sprint(project_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/{project_id}/pm/instruct")
 def instruct_pm(
     project_id: str,

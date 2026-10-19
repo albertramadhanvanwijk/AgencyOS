@@ -102,6 +102,7 @@ interface AgentModelSelectorProps {
   tierFilter: string;
   onTierFilterChange: (tier: string) => void;
   isSurfaceSecondary?: boolean;
+  noCardWrapper?: boolean;
 }
 
 function AgentModelSelector({
@@ -115,6 +116,7 @@ function AgentModelSelector({
   tierFilter,
   onTierFilterChange,
   isSurfaceSecondary = false,
+  noCardWrapper = false,
 }: AgentModelSelectorProps) {
   const currentProvider = activeLlms.find((l) => l.id === selectedProfileId) || defaultLLM;
   const currentTargetModel = currentProvider?.model || defaultLLM?.model || "gemini-3.8-flash";
@@ -145,48 +147,52 @@ function AgentModelSelector({
 
   return (
     <div
-      className={`space-y-3 p-3 rounded border border-borderBase-light dark:border-borderBase-dark ${
-        isSurfaceSecondary
-          ? "bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50"
-          : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
+      className={`w-full max-w-full min-w-0 box-border overflow-hidden ${
+        noCardWrapper
+          ? "space-y-3"
+          : `space-y-3 p-3 rounded border border-borderBase-light dark:border-borderBase-dark ${
+              isSurfaceSecondary
+                ? "bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50"
+                : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
+            }`
       }`}
     >
       {/* 1. LLM Provider Dropdown */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="font-semibold block text-[11px] text-textPrimary-light dark:text-textPrimary-dark">
+      <div className="w-full min-w-0">
+        <div className="flex items-center justify-between mb-1 gap-2">
+          <label className="font-semibold block text-[11px] text-textPrimary-light dark:text-textPrimary-dark truncate">
             1. Pilih LLM Provider:
           </label>
-          <span className="text-[10px] text-accent font-medium">
-            Tersinkron dengan Settings ({activeLlms.length} Aktif)
+          <span className="text-[10px] text-accent font-medium shrink-0">
+            {activeLlms.length} Aktif di Settings
           </span>
         </div>
         <select
           value={selectedProfileId}
           onChange={(e) => onProfileChange(e.target.value)}
-          className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full max-w-full min-w-0 block truncate h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
         >
           <option value="">
-            Default Sistem (Mengikuti: {defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
+            Default Sistem ({defaultLLM?.name || "Google Gemini"} — {defaultLLM?.model || "gemini-3.8-flash"})
           </option>
           {activeLlms.map((llm) => (
             <option key={llm.id} value={llm.id}>
-              {llm.name} ({llm.provider}) {llm.is_default ? "★ Default" : ""} {llm.has_api_key ? "• API Key Terhubung" : ""}
+              {llm.name} ({llm.provider}) {llm.is_default ? "★ Default" : ""} {llm.has_api_key ? "• API Key Aktif" : ""}
             </option>
           ))}
         </select>
-        <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1">
-          Hanya menampilkan provider yang aktif & telah dikonfigurasi di Settings.
+        <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1 truncate">
+          Hanya menampilkan provider aktif & terverifikasi dari Settings.
         </p>
       </div>
 
       {/* 2. Model AI Selection */}
-      <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="font-semibold text-[11px] text-textPrimary-light dark:text-textPrimary-dark">
+      <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 space-y-2 w-full min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <label className="font-semibold text-[11px] text-textPrimary-light dark:text-textPrimary-dark truncate">
             2. Pilih Model AI dari LLM yang Aktif:
           </label>
-          <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 font-medium">
+          <span className="text-[10px] font-mono text-purple-600 dark:text-purple-400 font-medium shrink-0">
             {catalog.length} model tersedia
           </span>
         </div>
@@ -195,7 +201,7 @@ function AgentModelSelector({
         <select
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
-          className="w-full h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full max-w-full min-w-0 block truncate h-8 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
         >
           <option value="">
             {selectedProfileId
@@ -206,7 +212,7 @@ function AgentModelSelector({
             <optgroup key={groupTitle} label={groupTitle}>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.id} — [{m.tierLabel}] {m.isMainForProvider ? "★ (Model Utama)" : ""}
+                  {m.id} [{m.tierLabel}]{m.isMainForProvider ? " ★ Utama" : ""}
                 </option>
               ))}
             </optgroup>
@@ -214,9 +220,9 @@ function AgentModelSelector({
         </select>
 
         {/* Visual Model Catalog with Tier Filters */}
-        <div className="space-y-1.5 pt-1">
+        <div className="space-y-1.5 pt-1 w-full min-w-0">
           {/* Tier Tabs */}
-          <div className="flex items-center space-x-1 overflow-x-auto pb-0.5 text-[10px]">
+          <div className="flex items-center space-x-1 overflow-x-auto pb-1 text-[10px] w-full min-w-0">
             <button
               type="button"
               onClick={() => onTierFilterChange("all")}
@@ -277,7 +283,7 @@ function AgentModelSelector({
           </div>
 
           {/* Cards List */}
-          <div className="space-y-1 max-h-44 overflow-y-auto pr-0.5">
+          <div className="space-y-1 max-h-44 overflow-y-auto pr-0.5 w-full min-w-0">
             {filteredCatalog.map((item) => {
               const isSelected =
                 selectedModel === item.id || (!selectedModel && item.isMainForProvider);
@@ -286,14 +292,14 @@ function AgentModelSelector({
                   key={item.id}
                   type="button"
                   onClick={() => onModelChange(item.id)}
-                  className={`w-full text-left p-2 rounded border transition-all flex flex-col space-y-0.5 ${
+                  className={`w-full max-w-full min-w-0 box-border text-left p-2 rounded border transition-all flex flex-col space-y-0.5 ${
                     isSelected
                       ? "border-accent bg-accent/10 shadow-xs ring-1 ring-accent"
                       : "border-borderBase-light/60 dark:border-borderBase-dark/60 bg-surface-light dark:bg-surface-dark hover:border-accent/40"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center space-x-1.5 truncate">
+                  <div className="flex items-center justify-between gap-1.5 w-full min-w-0">
+                    <div className="flex items-center space-x-1.5 truncate min-w-0 flex-1">
                       {isSelected ? (
                         <Check className="w-3.5 h-3.5 text-accent shrink-0" />
                       ) : (
@@ -303,7 +309,7 @@ function AgentModelSelector({
                         {item.id}
                       </span>
                       {item.isMainForProvider && (
-                        <span className="text-[9px] font-medium text-accent">★ Utama</span>
+                        <span className="text-[9px] font-medium text-accent shrink-0">★ Utama</span>
                       )}
                     </div>
                     <span
@@ -312,7 +318,7 @@ function AgentModelSelector({
                       {item.tierLabel}
                     </span>
                   </div>
-                  <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark leading-tight line-clamp-1">
+                  <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark leading-tight line-clamp-1 w-full truncate">
                     {item.description}
                   </p>
                 </button>
@@ -321,9 +327,9 @@ function AgentModelSelector({
           </div>
 
           {/* Tip / Explainer */}
-          <div className="p-2 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px] text-textMuted-light dark:text-textMuted-dark flex items-start space-x-1.5 leading-relaxed">
+          <div className="p-2 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px] text-textMuted-light dark:text-textMuted-dark flex items-start space-x-1.5 leading-relaxed w-full min-w-0">
             <Info className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
-            <div>
+            <div className="min-w-0 flex-1">
               <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">Kesesuaian Akun:</span> Akun Free Tier (Google AI Studio) dapat memakai model <span className="text-emerald-600 dark:text-emerald-400 font-medium">Free Tier / Flash</span> secara gratis dengan kuota harian besar. Akun Pro/Pay-as-you-go dapat memanfaatkan model <span className="text-blue-600 dark:text-blue-400 font-medium">Pro Tier</span> untuk reasoning kompleks.
             </div>
           </div>
@@ -1151,15 +1157,15 @@ export default function WorkforcePage() {
                   <Sparkles className="w-3.5 h-3.5 text-purple-500" />
                   <span>Model LLM & Engine:</span>
                 </span>
-                <div className="p-3 bg-canvas-light dark:bg-canvas-dark rounded border border-borderBase-light dark:border-borderBase-dark space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-textMuted-light dark:text-textMuted-dark text-[11px]">Model Aktif Sekarang:</span>
-                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium">
-                      <span>{selectedAgent.llm_model || defaultLLM?.model || "gemini-3.8-flash"}</span>
+                <div className="p-3 bg-canvas-light dark:bg-canvas-dark rounded border border-borderBase-light dark:border-borderBase-dark space-y-3 w-full min-w-0 box-border overflow-hidden">
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <span className="text-textMuted-light dark:text-textMuted-dark text-[11px] shrink-0">Model Aktif Sekarang:</span>
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium truncate max-w-[220px]">
+                      <span className="truncate">{selectedAgent.llm_model || defaultLLM?.model || "gemini-3.8-flash"}</span>
                     </span>
                   </div>
 
-                  <div className="pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50 space-y-3">
+                  <div className="pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50 space-y-3 w-full min-w-0">
                     <AgentModelSelector
                       selectedProfileId={drawerLLMProfileId}
                       selectedModel={drawerLLMModel}
@@ -1178,7 +1184,7 @@ export default function WorkforcePage() {
                       catalog={getAvailableModelsCatalog(drawerLLMProfileId)}
                       tierFilter={drawerTierFilter}
                       onTierFilterChange={(tier) => setDrawerTierFilter(tier)}
-                      isSurfaceSecondary={true}
+                      noCardWrapper={true}
                     />
 
                     <div className="pt-1 flex justify-end">

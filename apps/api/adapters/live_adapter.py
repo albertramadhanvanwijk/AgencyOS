@@ -28,7 +28,13 @@ class LiveLLMEngineAdapter(EngineAdapter):
         base_url: Optional[str] = None,
         model: Optional[str] = None,
     ):
-        self._api_key = api_key or os.environ.get("LIVE_ENGINE_API_KEY") or settings.LIVE_ENGINE_API_KEY
+        self._api_key = (
+            api_key
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("LIVE_ENGINE_API_KEY")
+            or settings.GEMINI_API_KEY
+            or settings.LIVE_ENGINE_API_KEY
+        )
         self._base_url = (base_url or os.environ.get("LIVE_ENGINE_BASE_URL") or settings.LIVE_ENGINE_BASE_URL).rstrip("/")
         self._model = model or os.environ.get("LIVE_ENGINE_MODEL") or settings.LIVE_ENGINE_MODEL
 
@@ -42,7 +48,13 @@ class LiveLLMEngineAdapter(EngineAdapter):
 
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key or os.environ.get("LIVE_ENGINE_API_KEY") or settings.LIVE_ENGINE_API_KEY
+        return (
+            self._api_key
+            or os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("LIVE_ENGINE_API_KEY")
+            or settings.GEMINI_API_KEY
+            or settings.LIVE_ENGINE_API_KEY
+        )
 
     @property
     def base_url(self) -> str:
@@ -69,6 +81,11 @@ class LiveLLMEngineAdapter(EngineAdapter):
             "interactive_shell": False,
             "simulated": False,
             "supported_models": [
+                "gemini-2.0-flash",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-1.5-pro",
+                "gemini-1.5-flash",
                 "gpt-4o-mini",
                 "gpt-4o",
                 "claude-3-5-sonnet",
@@ -93,8 +110,14 @@ class LiveLLMEngineAdapter(EngineAdapter):
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         key = api_key if api_key is not None else self.api_key
-        url = (base_url or self.base_url).rstrip("/")
+        raw_url = (base_url or self.base_url).rstrip("/")
         selected_model = model or self.model
+
+        # Normalize Gemini base URL if needed
+        url = raw_url
+        if "generativelanguage.googleapis.com" in url:
+            if not url.endswith("/openai"):
+                url = f"{url}/openai" if url.endswith("v1beta") else f"{url}/v1beta/openai"
 
         # If standard cloud API without key
         if not key:
@@ -125,16 +148,21 @@ class LiveLLMEngineAdapter(EngineAdapter):
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
+        params = {}
+        if "generativelanguage.googleapis.com" in url:
+            params["key"] = key
 
         try:
-            resp = httpx.get(f"{url}/models", headers=headers, timeout=8.0)
+            resp = httpx.get(f"{url}/models", headers=headers, params=params if params else None, timeout=8.0)
             if resp.status_code == 200:
+                is_gemini = "gemini" in selected_model.lower() or "generativelanguage" in url
+                provider_label = f"Google Gemini ({selected_model})" if is_gemini else f"Live Engine ({selected_model})"
                 return {
                     "status": "verified",
                     "adapter": self.adapter_name,
                     "simulated": False,
                     "model": selected_model,
-                    "message": f"Koneksi ke Live Engine ({selected_model}) berhasil diverifikasi."
+                    "message": f"Koneksi ke {provider_label} berhasil diverifikasi."
                 }
             elif resp.status_code in (401, 403):
                 return {
@@ -236,12 +264,22 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 "Content-Type": "application/json"
             }
 
-            self._add_log(db, run.id, "running", "INFO", f"Mengirim request ke {self.model}...")
+            target_url = self.base_url.rstrip("/")
+            if "generativelanguage.googleapis.com" in target_url:
+                if not target_url.endswith("/openai"):
+                    target_url = f"{target_url}/openai" if target_url.endswith("v1beta") else f"{target_url}/v1beta/openai"
 
-            with httpx.Client(timeout=45.0) as client:
+            query_params = {}
+            if "generativelanguage.googleapis.com" in target_url and key:
+                query_params["key"] = key
+
+            self._add_log(db, run.id, "running", "INFO", f"Mengirim request ke {self.model} via {target_url}...")
+
+            with httpx.Client(timeout=60.0) as client:
                 res = client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{target_url}/chat/completions",
                     headers=headers,
+                    params=query_params if query_params else None,
                     json={
                         "model": self.model,
                         "messages": prompt_messages,

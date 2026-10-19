@@ -29,7 +29,16 @@ def test_live_adapter_capabilities():
     assert caps["test_runner"] is True
     assert caps["quality_gates"] is True
     assert "supported_models" in caps
+    assert "gemini-2.0-flash" in caps["supported_models"]
+    assert "gemini-2.5-pro" in caps["supported_models"]
     assert len(caps["supported_models"]) > 0
+
+def test_gemini_api_key_resolution(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyTestGeminiKey123")
+    live = LiveLLMEngineAdapter()
+    assert live.api_key == "AIzaSyTestGeminiKey123"
+    assert "generativelanguage" in live.base_url
+    assert "gemini" in live.model
 
 def test_live_adapter_health_check_honesty_rule(monkeypatch):
     # When no key is provided, MUST report not_configured, never claim verified

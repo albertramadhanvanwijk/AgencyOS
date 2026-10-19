@@ -22,10 +22,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
-    # Live Engine Configuration (Phase 6)
+    # Live Engine Configuration (Phase 6 & Gemini Support)
+    GEMINI_API_KEY: str | None = Field(default=None)
     LIVE_ENGINE_API_KEY: str | None = Field(default=None)
-    LIVE_ENGINE_BASE_URL: str = Field(default="https://api.openai.com/v1")
-    LIVE_ENGINE_MODEL: str = Field(default="gpt-4o-mini")
+    LIVE_ENGINE_BASE_URL: str = Field(default="https://generativelanguage.googleapis.com/v1beta/openai")
+    LIVE_ENGINE_MODEL: str = Field(default="gemini-2.0-flash")
     DEFAULT_ENGINE_ADAPTER: str = Field(default="MockEngineAdapter")
 
     model_config = SettingsConfigDict(

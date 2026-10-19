@@ -65,9 +65,9 @@ export default function SettingsPage() {
   const [isLoadingAdapters, setIsLoadingAdapters] = useState(true);
 
   // Configuration form state
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [baseUrl, setBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState("gemini-2.0-flash");
   const [defaultAdapter, setDefaultAdapter] = useState("MockEngineAdapter");
   const [showApiKey, setShowApiKey] = useState(false);
 
@@ -203,13 +203,25 @@ export default function SettingsPage() {
                 <div>
                   <h2 className="text-sm font-semibold">Live AI Execution Engine Configuration</h2>
                   <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                    Konfigurasi provider LLM OpenAI-compatible untuk eksekusi kode riil di sandbox terisolasi.
+                    Konfigurasi engine LLM untuk eksekusi kode riil di sandbox terisolasi. Mendukung penuh Google Gemini & Antigravity.
                   </p>
                 </div>
               </div>
               <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
-                Phase 6 Live Engine
+                Gemini & OpenAI Ready
               </span>
+            </div>
+
+            {/* Antigravity & Gemini Highlight Banner */}
+            <div className="p-3.5 rounded-md bg-accent/10 border border-accent/25 flex items-start space-x-3 text-xs">
+              <Sparkles className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-semibold text-accent block">Google Gemini & Antigravity Native Engine</span>
+                <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                  AgencyOS terintegrasi dengan <strong>Google Gemini 2.0 Flash & 2.5 Pro</strong> via OpenAI-compatible endpoint Google (<code className="font-mono text-[11px] text-accent">https://generativelanguage.googleapis.com/v1beta/openai</code>).
+                  Cukup masukkan Google API Key dari Google AI Studio atau set <code className="font-mono text-[11px] text-accent">GEMINI_API_KEY</code> di file <code className="font-mono text-[11px]">.env</code>.
+                </p>
+              </div>
             </div>
 
             {/* Provider Base URL */}
@@ -222,28 +234,47 @@ export default function SettingsPage() {
                 type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.openai.com/v1"
+                placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
                 className="w-full text-xs font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
               />
-              <div className="flex items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
                 <span>Quick Preset:</span>
                 <button
                   type="button"
-                  onClick={() => setBaseUrl("https://api.openai.com/v1")}
+                  onClick={() => {
+                    setBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
+                    setModel("gemini-2.0-flash");
+                  }}
+                  className="px-2 py-0.5 rounded bg-accent/15 text-accent border border-accent/40 font-medium"
+                >
+                  ⚡ Google Gemini (Recommended)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBaseUrl("https://api.openai.com/v1");
+                    setModel("gpt-4o-mini");
+                  }}
                   className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
                 >
                   OpenAI
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBaseUrl("https://openrouter.ai/api/v1")}
+                  onClick={() => {
+                    setBaseUrl("https://openrouter.ai/api/v1");
+                    setModel("google/gemini-2.0-flash-exp:free");
+                  }}
                   className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
                 >
                   OpenRouter
                 </button>
                 <button
                   type="button"
-                  onClick={() => setBaseUrl("http://localhost:11434/v1")}
+                  onClick={() => {
+                    setBaseUrl("http://localhost:11434/v1");
+                    setModel("llama3");
+                  }}
                   className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
                 >
                   Ollama Local
@@ -268,7 +299,7 @@ export default function SettingsPage() {
                   type={showApiKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-••••••••••••••••••••••••••••••••"
+                  placeholder="AIzaSy•••••••••••••••••••• (Google Key) atau sk-••••"
                   className="w-full text-xs font-mono px-3 py-2 pr-10 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
                 />
                 <button
@@ -280,7 +311,7 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                Kosongkan bila menggunakan local endpoint (Ollama/vLLM) tanpa autentikasi.
+                Masukkan Google Gemini API Key dari AI Studio, atau kosongkan bila menggunakan local endpoint (Ollama/vLLM).
               </p>
             </div>
 
@@ -294,19 +325,28 @@ export default function SettingsPage() {
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder="gpt-4o-mini"
+                placeholder="gemini-2.0-flash"
                 className="w-full text-xs font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
               />
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
                 <span>Model Presets:</span>
-                {["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet", "llama-3.3-70b", "qwen-2.5-coder-32b"].map((m) => (
+                {[
+                  "gemini-2.0-flash",
+                  "gemini-2.5-pro",
+                  "gemini-2.5-flash",
+                  "gemini-1.5-pro",
+                  "gpt-4o-mini",
+                  "gpt-4o",
+                  "claude-3-5-sonnet",
+                  "qwen-2.5-coder-32b",
+                ].map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setModel(m)}
                     className={`px-1.5 py-0.5 rounded border ${
                       model === m
-                        ? "bg-accent/15 text-accent border-accent/40"
+                        ? "bg-accent/15 text-accent border-accent/40 font-medium"
                         : "hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark"
                     }`}
                   >

@@ -202,7 +202,7 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
       const updatedPRD = await res.json();
       setPrd(updatedPRD);
       setIsDiscoveryOpen(false);
-      setActionSuccess("Dewi Lestari berhasil merumuskan Dokumen PRD resmi! Silakan tinjau kriteria teknis sebelum persetujuan.");
+      setActionSuccess("Maya Indrawati (UX Researcher), Satria Pratama (Business Analyst), dan Dewi Lestari (PO) berhasil merumuskan Dokumen PRD resmi! Silakan tinjau kriteria teknis sebelum persetujuan.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Gagal menyusun dokumen PRD.");
     } finally {
@@ -293,7 +293,7 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
               isLoading={generating}
               leftIcon={<Sparkles className="w-3.5 h-3.5" />}
             >
-              {hasContent ? "Generate Ulang PRD" : "AI Susun PRD (Dewi)"}
+              {hasContent ? "Generate Ulang PRD" : "AI Susun PRD (Maya, Satria & Dewi)"}
             </Button>
           </div>
         }
@@ -369,8 +369,8 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
               Dokumen Spesifikasi Kebutuhan (PRD) Belum Dirumuskan
             </h3>
             <p className="text-xs text-textMuted-light dark:text-textMuted-dark leading-relaxed max-w-lg mx-auto">
-              Sesuai standar SDLC & Scrum, proyek tidak boleh langsung dikoding tanpa spesifikasi baku.
-              Biarkan <strong>Dewi Lestari (Technical Product Owner)</strong> menyusun Dokumen PRD resmi lengkap dengan kriteria fungsional, batasan ruang lingkup, dan acceptance criteria.
+              Sesuai standar SDLC &amp; Scrum, proyek tidak boleh langsung dikoding tanpa spesifikasi baku.
+              Biarkan tim produk: <strong>Maya Indrawati (UX Researcher &amp; Empathy)</strong>, <strong>Satria Pratama (Business Analyst)</strong>, dan <strong>Dewi Lestari (Technical Product Owner)</strong> menyusun Dokumen PRD resmi lengkap dengan persona pengguna, user journeys, kriteria fungsional, dan batasan ruang lingkup.
             </p>
           </div>
           <div className="flex items-center justify-center gap-3 pt-2">
@@ -462,9 +462,15 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
 
           {/* Section 2: Target Users & Personas */}
           <div className="p-5 sm:p-6 rounded-xl bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark shadow-xs space-y-4">
-            <div className="flex items-center space-x-2 text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-              <Users className="w-4 h-4 text-accent" />
-              <span>2. Target Pengguna & Karakter Persona</span>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-2 text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                <Users className="w-4 h-4 text-accent" />
+                <span>2. Target Pengguna &amp; Karakter Persona</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>Maya Indrawati (UX Researcher &amp; Empathy)</span>
+              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {prd.target_users.map((u, idx) => (
@@ -491,9 +497,15 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
 
           {/* Section 3: User Journeys */}
           <div className="p-5 sm:p-6 rounded-xl bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark shadow-xs space-y-4">
-            <div className="flex items-center space-x-2 text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-              <Route className="w-4 h-4 text-accent" />
-              <span>3. Alur Pengguna (User Journeys)</span>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-2 text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                <Route className="w-4 h-4 text-accent" />
+                <span>3. Alur Pengguna (User Journeys)</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>Maya Indrawati (Flow &amp; User Experience)</span>
+              </span>
             </div>
             <div className="space-y-3">
               {prd.user_journeys.map((j, idx) => (
@@ -520,14 +532,20 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
 
           {/* Section 4: Functional Requirements (Core Table) */}
           <div className="p-5 sm:p-6 rounded-xl bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center space-x-2 text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
                 <CheckSquare className="w-4 h-4 text-accent" />
                 <span>4. Kebutuhan Fungsional (Functional Requirements)</span>
               </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
-                {prd.functional_requirements.length} Spesifikasi Fungsional
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Satria Pratama &amp; Dewi Lestari</span>
+                </span>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-semibold">
+                  {prd.functional_requirements.length} Spesifikasi
+                </span>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -669,12 +687,12 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
               <div className="flex items-center space-x-2.5">
                 <CheckCircle2 className="w-5 h-5 text-status-success shrink-0" />
                 <span className="text-textPrimary-light dark:text-textPrimary-dark font-medium">
-                  PRD telah disetujui. Langkah selanjutnya: Masuk ke tahap <strong>Backlog & Sprints</strong> untuk meninjau dekomposisi cerita pengguna!
+                  Dokumen PRD resmi disetujui! Langkah selanjutnya: Masuk ke <strong>Tahap 2: Arsitektur Sistem &amp; Desain UI/UX</strong> bersama Aditya Pratama &amp; Siti Rahma.
                 </span>
               </div>
-              <Link href={`/projects/${projectId}/backlog`}>
+              <Link href={`/projects/${projectId}/architecture`}>
                 <Button size="sm" variant="primary" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  Lanjut ke Backlog & Sprints →
+                  Lanjut ke Tahap 2: Arsitektur &amp; Desain →
                 </Button>
               </Link>
             </div>
@@ -693,10 +711,10 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-                    Wawancara Discovery Kebutuhan (Dewi Lestari)
+                    Wawancara Discovery Kebutuhan (Maya, Satria &amp; Dewi)
                   </h3>
                   <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                    Bantu Technical Product Owner memahami sasaran proyek Anda secara presisi
+                    Maya (UX Research &amp; Empathy), Satria (Business Analyst), dan Dewi (Technical PO) memetakan kebutuhan sistem
                   </p>
                 </div>
               </div>
@@ -711,7 +729,7 @@ export default function ProjectPRDPage({ params }: { params: Promise<{ id: strin
 
             <div className="p-5 overflow-y-auto space-y-4 text-xs flex-1">
               <div className="p-3 rounded-lg bg-accent/10 border border-accent/25 text-accent text-[11px] leading-relaxed">
-                💡 <em>Tips:</em> Jawaban Anda akan digunakan Dewi Lestari untuk merumuskan Persona, Kebutuhan Fungsional (FR), kriteria pengujian mutu, dan batasan ruang lingkup secara otomatis.
+                💡 <em>Kolaborasi Tim Produk:</em> Jawaban Anda dianalisis oleh <strong>Maya Indrawati</strong> (memetakan persona &amp; empathy), <strong>Satria Pratama</strong> (kebutuhan bisnis &amp; batasan scope), serta <strong>Dewi Lestari</strong> (kriteria mutu &amp; spesifikasi teknis).
               </div>
 
               {questions.map((q, idx) => (

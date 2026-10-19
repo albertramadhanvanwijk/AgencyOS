@@ -1143,7 +1143,7 @@ export default function SprintAnalyticsPage({
                   </div>
                 ) : !releaseNotes || releaseNotes.features.length === 0 ? (
                   <div className="p-6 text-center text-xs text-textMuted-light dark:text-textMuted-dark italic">
-                    Belum ada item task yang berstatus 'Done' untuk dimasukkan ke release notes. Selesaikan task di Papan Scrum terlebih dahulu.
+                    Belum ada item task yang berstatus &apos;Done&apos; untuk dimasukkan ke release notes. Selesaikan task di Papan Scrum terlebih dahulu.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">

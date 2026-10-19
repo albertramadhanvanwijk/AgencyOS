@@ -17,6 +17,8 @@ import {
   X,
   Target,
   Layers,
+  FileText,
+  ListTodo,
   CheckCircle2,
   Github,
   ExternalLink,
@@ -68,8 +70,8 @@ export default function ProjectsPage() {
   const [projectKey, setProjectKey] = useState("");
   const [projectGoal, setProjectGoal] = useState("");
 
-  // AI Auto-Planning Pipeline State
-  const [autoPlanEnabled, setAutoPlanEnabled] = useState(true);
+  // Workflow & AI Planning State
+  const [planningMode, setPlanningMode] = useState<"sdlc_full" | "auto_fast">("sdlc_full");
   const [pipelineStage, setPipelineStage] = useState<"form" | "pipeline" | "completed">("form");
   const [pipelineStep, setPipelineStep] = useState<number>(0);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
@@ -173,13 +175,14 @@ export default function ProjectsPage() {
       const newProj = await res.json();
       setCreatedProject(newProj);
 
-      if (!autoPlanEnabled) {
-        resetModal();
+      if (planningMode === "sdlc_full") {
+        // SDLC Full Discovery Flow: guide user to PRD & Discovery
+        setPipelineStage("completed");
         await fetchProjects();
         return;
       }
 
-      // Enter Pipeline Stage
+      // Enter Fast-Track Auto-Plan Pipeline Stage
       setPipelineStage("pipeline");
       setPipelineStep(1);
 
@@ -312,18 +315,42 @@ export default function ProjectsPage() {
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs">
+                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs flex-wrap gap-2">
                   <div className="flex items-center space-x-2 text-textMuted-light dark:text-textMuted-dark">
                     <GitBranch className="w-3.5 h-3.5" />
-                    <span className="font-mono text-[11px] truncate max-w-[200px]">
+                    <span className="font-mono text-[11px] truncate max-w-[140px]">
                       {proj.workspace_path}
                     </span>
                   </div>
-                  <Link href={`/projects/${proj.id}/board`}>
-                    <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3 h-3" />}>
-                      Scrum Board
-                    </Button>
-                  </Link>
+                  
+                  <div className="flex items-center space-x-1.5">
+                    <Link
+                      href={`/projects/${proj.id}/prd`}
+                      className="px-2 py-1 rounded text-[11px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent hover:text-accent transition-colors"
+                      title="Tahap 1: Dokumen PRD & Wawancara Discovery"
+                    >
+                      1. PRD
+                    </Link>
+                    <Link
+                      href={`/projects/${proj.id}/architecture`}
+                      className="px-2 py-1 rounded text-[11px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent hover:text-accent transition-colors"
+                      title="Tahap 2: Arsitektur & Desain Sistem"
+                    >
+                      2. Arsitek
+                    </Link>
+                    <Link
+                      href={`/projects/${proj.id}/backlog`}
+                      className="px-2 py-1 rounded text-[11px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent hover:text-accent transition-colors"
+                      title="Tahap 3: Dekomposisi Backlog"
+                    >
+                      3. Backlog
+                    </Link>
+                    <Link href={`/projects/${proj.id}/board`}>
+                      <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3 h-3" />}>
+                        Board
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
             );
@@ -406,24 +433,66 @@ export default function ProjectsPage() {
                   />
                 </div>
 
-                {/* AI Auto-Planning Option */}
-                <div className="p-3 rounded-lg border border-accent/40 bg-accent/5 dark:bg-accent/10 space-y-1.5">
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoPlanEnabled}
-                      onChange={(e) => setAutoPlanEnabled(e.target.checked)}
-                      className="mt-0.5 rounded text-accent focus:ring-accent"
-                    />
-                    <div className="flex-1">
-                      <span className="font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5 flex-wrap">
-                        <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
-                        <span>Jalankan AI Auto-Planning (Dewi Lestari)</span>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-accent text-white font-medium">Rekomendasi ⭐</span>
-                      </span>
-                      <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark block mt-0.5 leading-snug">
-                        Dewi Lestari (Technical Product Owner) akan otomatis membedah sasaran project, menyusun 3 Progressive Sprints, merumuskan User Stories lengkap dengan Acceptance Criteria &amp; DoD, dan menugaskan agen terbaik secara otonom.
-                      </span>
+                {/* SDLC Planning Strategy Selection */}
+                <div className="space-y-2">
+                  <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                    Metode Perencanaan Proyek
+                  </label>
+
+                  {/* Mode 1: Full SDLC & Discovery (Recommended) */}
+                  <label className={`block p-3 rounded-lg border transition-all cursor-pointer text-xs ${
+                    planningMode === "sdlc_full"
+                      ? "border-accent bg-accent/5 dark:bg-accent/10 ring-1 ring-accent/30"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark"
+                  }`}>
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="radio"
+                        name="planningMode"
+                        checked={planningMode === "sdlc_full"}
+                        onChange={() => setPlanningMode("sdlc_full")}
+                        className="mt-0.5 text-accent focus:ring-accent"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-accent" />
+                            <span>Alur Lengkap SDLC: Discovery PRD &amp; Arsitektur Desain</span>
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-accent text-white font-medium">Rekomendasi ⭐</span>
+                        </div>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                          <strong>Maya Indrawati</strong> (UX Researcher &amp; Empathy) &amp; <strong>Satria Pratama</strong> (Business Analyst) akan memandu sesi discovery kebutuhan &amp; menyusun PRD. Selanjutnya diteruskan ke <strong>Aditya Pratama</strong> (Arsitek) &amp; <strong>Siti Rahma</strong> (Lead UI) sebelum dipecah ke Scrum Backlog.
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Mode 2: Fast-Track Auto-Plan */}
+                  <label className={`block p-3 rounded-lg border transition-all cursor-pointer text-xs ${
+                    planningMode === "auto_fast"
+                      ? "border-accent bg-accent/5 dark:bg-accent/10 ring-1 ring-accent/30"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark"
+                  }`}>
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="radio"
+                        name="planningMode"
+                        checked={planningMode === "auto_fast"}
+                        onChange={() => setPlanningMode("auto_fast")}
+                        className="mt-0.5 text-accent focus:ring-accent"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                            Fast-Track Planning (Instan ke Board)
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-medium">Instan</span>
+                        </div>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                          Dewi Lestari langsung mendekomposisi 3 Sprint ke Papan Scrum tanpa sesi wawancara PRD &amp; Arsitektur mendalam terlebih dahulu.
+                        </p>
+                      </div>
                     </div>
                   </label>
                 </div>
@@ -584,8 +653,13 @@ export default function ProjectsPage() {
                 <Button type="button" variant="outline" size="sm" onClick={resetModal}>
                   Batal
                 </Button>
-                <Button type="submit" size="sm" isLoading={submitting} leftIcon={autoPlanEnabled ? <Sparkles className="w-3.5 h-3.5" /> : undefined}>
-                  {autoPlanEnabled ? "Inisialisasi & Mulai Auto-Plan →" : "Inisialisasi Project"}
+                <Button
+                  type="submit"
+                  size="sm"
+                  isLoading={submitting}
+                  leftIcon={planningMode === "sdlc_full" ? <FileText className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                >
+                  {planningMode === "sdlc_full" ? "Buat Project & Mulai PRD →" : "Inisialisasi & Fast-Track ke Board →"}
                 </Button>
               </div>
             </form>
@@ -706,8 +780,100 @@ export default function ProjectsPage() {
                 <span>Menghubungkan ke workforce agent registry &amp; mengalokasikan workspace...</span>
               </div>
             </div>
+          ) : planningMode === "sdlc_full" ? (
+            /* --- STAGE 3A: SDLC DISCOVERY KICKOFF SUMMARY --- */
+            <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in">
+              <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-9 h-9 rounded-lg bg-status-success/15 text-status-success flex items-center justify-center font-bold">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                      Project &amp; Workspace Berhasil Dibuat!
+                    </h3>
+                    <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                      Workspace terisolasi siap. Memasuki Tahap 1: Dokumen PRD &amp; Wawancara Discovery.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetModal}
+                  className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Discovery Workflow Steps Preview */}
+              <div className="space-y-2 text-xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                  Tahapan Rekayasa Produk (SDLC):
+                </span>
+
+                <div className="p-3 rounded-lg border border-accent/40 bg-accent/10 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-accent flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Tahap 1: Dokumen PRD &amp; Wawancara Discovery</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent text-white font-bold uppercase">
+                      Langkah Pertama →
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    <strong>Maya Indrawati</strong> (UX Researcher &amp; Empathy) &amp; <strong>Satria Pratama</strong> (Business Analyst) akan memandu sesi discovery kebutuhan &amp; menyusun draf PRD resmi.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1 opacity-70">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Tahap 2: Arsitektur Sistem &amp; Desain UI/UX</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark">Menunggu PRD</span>
+                  </div>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    <strong>Aditya Pratama</strong> (System Architect) &amp; <strong>Siti Rahma</strong> (Lead UI Designer) menyusun ERD, API Contract &amp; Token Desain.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1 opacity-70">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-1.5">
+                      <ListTodo className="w-3.5 h-3.5" />
+                      <span>Tahap 3: Dekomposisi Backlog &amp; Papan Scrum</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark">Menunggu Arsitektur</span>
+                  </div>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    <strong>Dewi Lestari</strong> memecah cetak biru menjadi User Stories &amp; Sprint Backlog terverifikasi.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                <Button size="sm" variant="outline" onClick={resetModal}>
+                  Lihat Daftar Project
+                </Button>
+                {createdProject ? (
+                  <Link href={`/projects/${createdProject.id}/prd`}>
+                    <Button size="sm" variant="primary" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                      Mulai Tahap 1: Dokumen PRD →
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button size="sm" variant="primary" onClick={resetModal}>
+                    Selesai
+                  </Button>
+                )}
+              </div>
+            </div>
           ) : (
-            /* --- STAGE 3: PIPELINE COMPLETED SUMMARY --- */
+            /* --- STAGE 3B: FAST-TRACK PIPELINE COMPLETED SUMMARY --- */
             <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in">
               <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
                 <div className="flex items-center space-x-2.5">

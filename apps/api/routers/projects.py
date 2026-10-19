@@ -101,10 +101,14 @@ def create_project(proj_in: ProjectCreate, db: Session = Depends(get_db)):
             repo_url = gh_repo.get("html_url")
             repo_name = gh_repo.get("full_name")
         except Exception as e:
-            # If auto-create fails, raise friendly error to user
+            err_msg = str(e)
+            if "name already exists" in err_msg.lower():
+                detail_msg = f"Repositori '{target_repo_name}' sudah ada di akun GitHub Anda. Silakan gunakan nama unik lain, atau pilih opsi 'Hubungkan ke Repo yang Ada', atau pilih mode 'Lokal Saja'."
+            else:
+                detail_msg = f"Gagal membuat repositori GitHub otomatis: {err_msg}"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Gagal membuat repositori GitHub otomatis: {str(e)}"
+                detail=detail_msg
             )
 
     # Initialize local git repository (and push to remote if url is set)

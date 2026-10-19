@@ -286,7 +286,7 @@ export default function ProjectArchitecturePage({
               isLoading={generating}
               leftIcon={<Sparkles className="w-3.5 h-3.5" />}
             >
-              AI Rancang Arsitektur (Budi)
+              AI Rancang Arsitektur (Aditya & Siti)
             </Button>
           </div>
         }
@@ -374,7 +374,7 @@ export default function ProjectArchitecturePage({
             <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-0.5">
               {isApproved
                 ? `Telah disetujui secara resmi oleh ${architecture?.approved_by} pada ${new Date(architecture?.approved_at || "").toLocaleString("id-ID")}`
-                : "Dokumen rancangan arsitektur teknis sistem sebelum User Story dipecah ke Backlog."}
+                : "Cetak biru arsitektur teknis sistem dirancang oleh Aditya Pratama (System Architect) & Siti Rahma (Lead UI Designer) sebelum User Story dipecah ke Backlog."}
             </p>
           </div>
         </div>
@@ -393,7 +393,7 @@ export default function ProjectArchitecturePage({
           ) : (
             <Link href={`/projects/${projectId}/backlog`}>
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                Lanjut ke Backlog & Sprints
+                Lanjut ke Backlog &amp; Sprints (Tahap 3) →
               </Button>
             </Link>
           )}
@@ -780,7 +780,7 @@ export default function ProjectArchitecturePage({
                 type="text"
                 value={signOffName}
                 onChange={(e) => setSignOffName(e.target.value)}
-                placeholder="Contoh: Budi Santoso (Lead Architect)"
+                placeholder="Contoh: Aditya Pratama (Lead Architect) / Albert (Owner)"
                 className="w-full px-3 py-2 rounded-lg text-xs bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
               />
             </div>

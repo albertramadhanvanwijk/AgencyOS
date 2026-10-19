@@ -215,23 +215,41 @@ class SchedulerService:
         """
         Menghitung kapasitas sprint, alokasi story points per agen, dan utilization rate.
         """
-        # Find active or target sprint
+        # Calculate total project scope across all sprints
+        all_project_items = db.query(WorkItem).filter(
+            WorkItem.project_id == project_id,
+            WorkItem.status != "cancelled"
+        ).all()
+        total_project_items = len(all_project_items)
+        total_project_points = round(sum(i.estimate_points or 0.0 for i in all_project_items), 1)
+
+        # Find target sprint
         sprint = None
-        if sprint_id:
+        if sprint_id and sprint_id not in ["all", "active"]:
             sprint = db.query(Sprint).filter(Sprint.id == sprint_id, Sprint.project_id == project_id).first()
-        if not sprint:
+        if not sprint and sprint_id != "all":
+            # Priority 1: active sprint
             sprint = db.query(Sprint).filter(Sprint.project_id == project_id, Sprint.status == "active").first()
+            # Priority 2: pending_approval sprint
+            if not sprint:
+                sprint = db.query(Sprint).filter(Sprint.project_id == project_id, Sprint.status == "pending_approval").first()
+            # Priority 3: first planning sprint
+            if not sprint:
+                sprint = db.query(Sprint).filter(Sprint.project_id == project_id).order_by(Sprint.created_at.asc()).first()
 
-        total_capacity = float(sprint.capacity_points) if sprint else 20.0
-        sprint_id_val = sprint.id if sprint else None
-        sprint_name_val = sprint.name if sprint else "Default Sprint"
-        sprint_status_val = sprint.status if sprint else "active"
-
-        # Query work items in this sprint or project
-        items_query = db.query(WorkItem).filter(WorkItem.project_id == project_id)
-        if sprint_id_val:
-            items_query = items_query.filter(WorkItem.sprint_id == sprint_id_val)
-        items = items_query.all()
+        if sprint_id == "all" or (not sprint and not db.query(Sprint).filter(Sprint.project_id == project_id).first()):
+            all_sprints = db.query(Sprint).filter(Sprint.project_id == project_id).all()
+            total_capacity = float(sum(s.capacity_points for s in all_sprints)) if all_sprints else 20.0
+            sprint_id_val = None
+            sprint_name_val = "Seluruh Backlog Project"
+            sprint_status_val = "all"
+            items = all_project_items
+        else:
+            total_capacity = float(sprint.capacity_points) if sprint else 20.0
+            sprint_id_val = sprint.id if sprint else None
+            sprint_name_val = sprint.name if sprint else "Sprint 1"
+            sprint_status_val = sprint.status if sprint else "pending_approval"
+            items = [i for i in all_project_items if i.sprint_id == sprint_id_val]
 
         allocated_points = sum(i.estimate_points or 0.0 for i in items if i.status != "cancelled")
         completed_points = sum(i.estimate_points or 0.0 for i in items if i.status == "done")
@@ -274,7 +292,9 @@ class SchedulerService:
             allocated_points=round(allocated_points, 1),
             completed_points=round(completed_points, 1),
             utilization_rate=utilization_rate,
-            agent_allocations=agent_allocations_list
+            agent_allocations=agent_allocations_list,
+            total_project_points=total_project_points,
+            total_project_items=total_project_items,
         )
 
 scheduler_service = SchedulerService()

@@ -85,6 +85,8 @@ interface SprintCapacity {
   completed_points: number;
   utilization_rate: number;
   agent_allocations: AgentCapacityItem[];
+  total_project_points?: number;
+  total_project_items?: number;
 }
 
 interface WorkItemSubtask {
@@ -1423,15 +1425,15 @@ export default function ScrumBoardPage({
                   className="h-7 px-2 text-xs font-semibold bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
                 >
                   <option value="active">
-                    Active Sprint {activeSprint ? `(${activeSprint.name})` : "(Belum ada)"}
+                    {activeSprint ? `Active: ${activeSprint.name}` : pendingSprint ? `Pending Approval: ${pendingSprint.name}` : "Active Sprint (Belum ada)"}
                   </option>
-                  {sprints.filter((s) => s.status === "completed").length > 0 && (
-                    <optgroup label="Riwayat Sprint Selesai">
+                  {sprints.filter((s) => s.status === "pending_approval" && s.id !== activeSprint?.id).length > 0 && (
+                    <optgroup label="Sprint Menunggu Persetujuan">
                       {sprints
-                        .filter((s) => s.status === "completed")
+                        .filter((s) => s.status === "pending_approval" && s.id !== activeSprint?.id)
                         .map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.name} (Selesai)
+                            {s.name} (Pending Approval)
                           </option>
                         ))}
                     </optgroup>
@@ -1447,18 +1449,52 @@ export default function ScrumBoardPage({
                         ))}
                     </optgroup>
                   )}
-                  <option value="all">Semua Work Items</option>
+                  {sprints.filter((s) => s.status === "completed").length > 0 && (
+                    <optgroup label="Riwayat Sprint Selesai">
+                      {sprints
+                        .filter((s) => s.status === "completed")
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} (Selesai)
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                  <option value="all">Semua Work Items (Total Backlog)</option>
                 </select>
               </div>
               <StatusBadge
-                variant={sprintCapacity.sprint_status === "completed" ? "neutral" : "success"}
-                label={sprintCapacity.sprint_status === "completed" ? "Completed" : "Active Sprint"}
+                variant={
+                  sprintCapacity.sprint_status === "completed"
+                    ? "neutral"
+                    : sprintCapacity.sprint_status === "pending_approval"
+                    ? "warning"
+                    : sprintCapacity.sprint_status === "planning"
+                    ? "info"
+                    : "success"
+                }
+                label={
+                  sprintCapacity.sprint_status === "completed"
+                    ? "Completed"
+                    : sprintCapacity.sprint_status === "pending_approval"
+                    ? "Pending Approval"
+                    : sprintCapacity.sprint_status === "planning"
+                    ? "Planning"
+                    : sprintCapacity.sprint_id
+                    ? "Active Sprint"
+                    : "Total Backlog"
+                }
               />
             </div>
 
-            <div className="flex items-center space-x-3 text-xs">
-              <div className="flex items-center space-x-1.5 font-mono">
-                <span className="text-textMuted-light dark:text-textMuted-dark">Beban Sprint:</span>
+            <div className="flex items-center space-x-3 text-xs flex-wrap gap-y-1">
+              <div
+                className="flex items-center space-x-1.5 font-mono"
+                title={selectedSprintFilter === "all" ? "Total beban seluruh sprint proyek" : `Beban kerja khusus ${sprintCapacity.sprint_name || 'sprint ini'}`}
+              >
+                <span className="text-textMuted-light dark:text-textMuted-dark">
+                  {selectedSprintFilter === "all" ? "Beban Seluruh Backlog:" : `Beban ${sprintCapacity.sprint_name ? sprintCapacity.sprint_name.split(':')[0] : 'Sprint'}:`}
+                </span>
                 <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
                   {sprintCapacity.allocated_points} / {sprintCapacity.total_capacity_points} SP
                 </span>
@@ -1470,6 +1506,17 @@ export default function ScrumBoardPage({
                 <span>• Selesai:</span>
                 <span className="font-semibold">{sprintCapacity.completed_points} SP</span>
               </div>
+              {sprintCapacity.total_project_points !== undefined && selectedSprintFilter !== "all" && (
+                <div
+                  className="flex items-center space-x-1 font-mono text-textMuted-light dark:text-textMuted-dark text-[11px] pl-2 border-l border-borderBase-light dark:border-borderBase-dark"
+                  title="Total estimasi story points dari seluruh sprint yang direncanakan"
+                >
+                  <span>Scope Proyek:</span>
+                  <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
+                    {sprintCapacity.total_project_points} SP ({items.length} Stories)
+                  </span>
+                </div>
+              )}
               {sprintCapacity.sprint_id && sprintCapacity.sprint_status === "active" ? (
                 <Button
                   size="sm"

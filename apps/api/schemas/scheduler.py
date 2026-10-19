@@ -37,6 +37,8 @@ class SprintCapacityOut(BaseModel):
     completed_points: float
     utilization_rate: float
     agent_allocations: List[AgentCapacityItem]
+    total_project_points: Optional[float] = None
+    total_project_items: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

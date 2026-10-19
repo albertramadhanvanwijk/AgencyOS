@@ -562,11 +562,34 @@ class LiveLLMEngineAdapter(EngineAdapter):
         workspace_dir: Path,
         db: Session
     ) -> ExecutionRun:
-        key = self.api_key
-        if not key and not ("localhost" in self.base_url or "127.0.0.1" in self.base_url):
+        # Resolve Assigned Agent & Model Profile Override
+        agent = None
+        if run.agent_id:
+            try:
+                from apps.api.models.workforce import AIAgent
+                agent = db.query(AIAgent).filter(AIAgent.id == run.agent_id).first()
+            except Exception:
+                agent = None
+
+        active_key = self.api_key
+        active_url = self.base_url
+        active_model = self.model
+        profile_name = "Default Sistem"
+
+        if agent and agent.llm_profile_id and agent.llm_profile_id in self._llm_configs:
+            prof = self._llm_configs[agent.llm_profile_id]
+            if prof.get("api_key"):
+                active_key = prof["api_key"]
+            if prof.get("base_url"):
+                active_url = prof["base_url"].rstrip("/")
+            if prof.get("model"):
+                active_model = prof["model"]
+            profile_name = prof.get("name") or "Agent Custom Profile"
+
+        if not active_key and not ("localhost" in active_url or "127.0.0.1" in active_url):
             raise HTTPException(
                 status_code=400,
-                detail="Live engine is not configured with an API key. Please configure an API key in Settings or use MockEngineAdapter."
+                detail=f"Live engine is not configured with an API key for profile '{profile_name}'. Please configure an API key in Settings or use MockEngineAdapter."
             )
 
         try:
@@ -576,17 +599,26 @@ class LiveLLMEngineAdapter(EngineAdapter):
             db.commit()
             self._add_log(db, run.id, "preparing", "INFO", "Memulai persiapan workspace terisolasi untuk eksekusi live...")
             self._add_log(db, run.id, "preparing", "INFO", f"Work Item: {work_item.key} — {work_item.title}")
-            self._add_log(db, run.id, "preparing", "INFO", f"Target Engine: {self.model} via {self.base_url}")
+            if agent:
+                self._add_log(db, run.id, "preparing", "INFO", f"Agent Assignee: {agent.name} ({agent.title or 'AI Engineer'})")
+            self._add_log(db, run.id, "preparing", "INFO", f"Target LLM: {active_model} via {profile_name} ({active_url})")
 
             # 2. Running & Calling LLM
             run.status = "running"
             db.commit()
-            self._add_log(db, run.id, "running", "INFO", "Menyusun prompt instruksi dan menghubungi model AI...")
+            self._add_log(db, run.id, "running", "INFO", f"Menyusun prompt instruksi dan menghubungi model {active_model}...")
+
+            agent_persona = ""
+            if agent:
+                agent_persona = f"You are {agent.name}, {agent.title or 'Software Engineer'} at AgencyOS. "
+                if agent.instructions:
+                    agent_persona += f"\nYour Specific Directives & Persona:\n{agent.instructions}\n\n"
 
             prompt_messages = [
                 {
                     "role": "system",
                     "content": (
+                        f"{agent_persona}"
                         "You are an expert autonomous software engineer working in AgencyOS. "
                         "Your job is to implement code solutions strictly satisfying the acceptance criteria. "
                         "Respond ONLY with a valid JSON object matching this schema:\n"
@@ -594,7 +626,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
                         '  "summary": "Brief explanation of the implementation",\n'
                         '  "files": [\n'
                         '    {"path": "relative/path/to/file.py", "content": "file code contents here"}\n'
-                        "  ]\n"
+                        '  ]\n'
                         "}\n"
                         "Do not include markdown code fences (```json) around the response."
                     )
@@ -612,24 +644,24 @@ class LiveLLMEngineAdapter(EngineAdapter):
             ]
 
             headers = {
-                "Authorization": f"Bearer {key}" if key else "",
+                "Authorization": f"Bearer {active_key}" if active_key else "",
                 "Content-Type": "application/json"
             }
 
-            target_url = self.base_url.rstrip("/")
+            target_url = active_url.rstrip("/")
             if "generativelanguage.googleapis.com" in target_url:
                 if not target_url.endswith("/openai"):
                     target_url = f"{target_url}/openai" if target_url.endswith("v1beta") else f"{target_url}/v1beta/openai"
 
             query_params = {}
-            if "generativelanguage.googleapis.com" in target_url and key:
-                query_params["key"] = key
+            if "generativelanguage.googleapis.com" in target_url and active_key:
+                query_params["key"] = active_key
 
-            self._add_log(db, run.id, "running", "INFO", f"Mengirim request ke {self.model} via {target_url}...")
+            self._add_log(db, run.id, "running", "INFO", f"Mengirim request ke {active_model} via {target_url}...")
 
             if "anthropic.com" in target_url:
                 headers = {
-                    "x-api-key": key or "",
+                    "x-api-key": active_key or "",
                     "anthropic-version": "2023-06-01",
                     "Content-Type": "application/json"
                 }
@@ -640,7 +672,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
                         f"{target_url}/messages",
                         headers=headers,
                         json={
-                            "model": self.model,
+                            "model": active_model,
                             "max_tokens": 4096,
                             "system": system_content,
                             "messages": [{"role": "user", "content": user_content}],
@@ -658,7 +690,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
                         headers=headers,
                         params=query_params if query_params else None,
                         json={
-                            "model": self.model,
+                            "model": active_model,
                             "messages": prompt_messages,
                             "temperature": 0.2,
                         }

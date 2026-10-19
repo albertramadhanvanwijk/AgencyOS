@@ -110,6 +110,24 @@ def trigger_execution_run(
         work_item.status = "in_progress"
 
     # 4. Resolve Adapter & Create Run Record
+    if not adapter_name:
+        from apps.api.adapters.live_adapter import live_adapter
+        if work_item.assignee_agent_id:
+            from apps.api.models.workforce import AIAgent
+            agent = db.query(AIAgent).filter(AIAgent.id == work_item.assignee_agent_id).first()
+            if agent:
+                if agent.engine_adapter:
+                    adapter_name = agent.engine_adapter
+                elif agent.llm_profile_id and agent.llm_profile_id in live_adapter._llm_configs:
+                    prof = live_adapter._llm_configs[agent.llm_profile_id]
+                    if prof.get("api_key") or "localhost" in (prof.get("base_url") or "") or "127.0.0.1" in (prof.get("base_url") or ""):
+                        adapter_name = "LiveLLMEngineAdapter"
+        if not adapter_name:
+            active_key = live_adapter.api_key
+            active_url = live_adapter.base_url or ""
+            if active_key or ("localhost" in active_url or "127.0.0.1" in active_url):
+                adapter_name = "LiveLLMEngineAdapter"
+
     adapter = get_adapter(adapter_name)
 
     run = ExecutionRun(

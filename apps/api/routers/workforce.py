@@ -3,12 +3,51 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models import AIAgent, AgentProfileVersion, AgentSkill, Department, JobRole, AuditEvent
+from apps.api.adapters.live_adapter import live_adapter
 from apps.api.schemas.workforce import (
     AIAgentCreate, AIAgentUpdate, AIAgentOut,
     AgentSkillOut, AgentProfileVersionOut,
 )
 
 router = APIRouter(prefix="/workforce", tags=["Workforce & Agents"])
+
+def _build_agent_out(agent: AIAgent) -> AIAgentOut:
+    llm_pname = None
+    llm_mname = None
+    if agent.llm_profile_id and agent.llm_profile_id in live_adapter._llm_configs:
+        p = live_adapter._llm_configs[agent.llm_profile_id]
+        llm_pname = p.get("name")
+        llm_mname = p.get("model")
+    else:
+        # Inherit active system default
+        d = next((item for item in live_adapter._llm_configs.values() if item.get("is_default")), None)
+        if d:
+            llm_pname = f"Default Sistem ({d.get('name')})"
+            llm_mname = d.get("model")
+
+    return AIAgentOut(
+        id=agent.id,
+        name=agent.name,
+        title=agent.title,
+        role_id=agent.role_id,
+        department_id=agent.department_id,
+        lifecycle_state=agent.lifecycle_state,
+        availability_state=agent.availability_state,
+        qualification_state=agent.qualification_state,
+        max_concurrency=agent.max_concurrency,
+        current_concurrency=agent.current_concurrency,
+        engine_adapter=agent.engine_adapter,
+        llm_profile_id=agent.llm_profile_id,
+        llm_profile_name=llm_pname,
+        llm_model=llm_mname,
+        instructions=agent.instructions,
+        current_profile_version=agent.current_profile_version,
+        created_at=agent.created_at,
+        updated_at=agent.updated_at,
+        role_name=agent.role.name if agent.role else None,
+        department_name=agent.department.name if agent.department else None,
+        skills=[AgentSkillOut.model_validate(s) for s in agent.skills],
+    )
 
 @router.get("/agents", response_model=List[AIAgentOut])
 def list_agents(
@@ -32,30 +71,7 @@ def list_agents(
         query = query.filter(AIAgent.name.ilike(f"%{search}%"))
 
     agents = query.all()
-    results = []
-    for a in agents:
-        out = AIAgentOut(
-            id=a.id,
-            name=a.name,
-            title=a.title,
-            role_id=a.role_id,
-            department_id=a.department_id,
-            lifecycle_state=a.lifecycle_state,
-            availability_state=a.availability_state,
-            qualification_state=a.qualification_state,
-            max_concurrency=a.max_concurrency,
-            current_concurrency=a.current_concurrency,
-            engine_adapter=a.engine_adapter,
-            instructions=a.instructions,
-            current_profile_version=a.current_profile_version,
-            created_at=a.created_at,
-            updated_at=a.updated_at,
-            role_name=a.role.name if a.role else None,
-            department_name=a.department.name if a.department else None,
-            skills=[AgentSkillOut.model_validate(s) for s in a.skills],
-        )
-        results.append(out)
-    return results
+    return [_build_agent_out(a) for a in agents]
 
 @router.post("/agents", response_model=AIAgentOut, status_code=status.HTTP_201_CREATED)
 def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
@@ -78,6 +94,7 @@ def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
         max_concurrency=agent_in.max_concurrency,
         current_concurrency=0,
         engine_adapter=agent_in.engine_adapter,
+        llm_profile_id=agent_in.llm_profile_id.strip() if agent_in.llm_profile_id and agent_in.llm_profile_id.strip() else None,
         instructions=agent_in.instructions or role.description,
         current_profile_version=1,
     )
@@ -89,7 +106,7 @@ def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
         agent_id=agent.id,
         version_number=1,
         instructions=agent.instructions,
-        config_snapshot={"max_concurrency": agent.max_concurrency, "engine": agent.engine_adapter},
+        config_snapshot={"max_concurrency": agent.max_concurrency, "engine": agent.engine_adapter, "llm_profile_id": agent.llm_profile_id},
         change_rationale="Initial agent creation"
     )
     db.add(pv)
@@ -109,59 +126,19 @@ def create_agent(agent_in: AIAgentCreate, db: Session = Depends(get_db)):
         target_type="AI_AGENT",
         target_id=agent.id,
         policy_basis="WORKFORCE_PROVISIONING_V1",
-        details={"name": agent.name, "role": role.name, "dept": dept.name}
+        details={"name": agent.name, "role": role.name, "dept": dept.name, "llm_profile_id": agent.llm_profile_id}
     ))
 
     db.commit()
     db.refresh(agent)
-
-    return AIAgentOut(
-        id=agent.id,
-        name=agent.name,
-        title=agent.title,
-        role_id=agent.role_id,
-        department_id=agent.department_id,
-        lifecycle_state=agent.lifecycle_state,
-        availability_state=agent.availability_state,
-        qualification_state=agent.qualification_state,
-        max_concurrency=agent.max_concurrency,
-        current_concurrency=agent.current_concurrency,
-        engine_adapter=agent.engine_adapter,
-        instructions=agent.instructions,
-        current_profile_version=agent.current_profile_version,
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-        role_name=role.name,
-        department_name=dept.name,
-        skills=[AgentSkillOut.model_validate(s) for s in agent.skills],
-    )
+    return _build_agent_out(agent)
 
 @router.get("/agents/{agent_id}", response_model=AIAgentOut)
 def get_agent(agent_id: str, db: Session = Depends(get_db)):
     agent = db.query(AIAgent).filter(AIAgent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-
-    return AIAgentOut(
-        id=agent.id,
-        name=agent.name,
-        title=agent.title,
-        role_id=agent.role_id,
-        department_id=agent.department_id,
-        lifecycle_state=agent.lifecycle_state,
-        availability_state=agent.availability_state,
-        qualification_state=agent.qualification_state,
-        max_concurrency=agent.max_concurrency,
-        current_concurrency=agent.current_concurrency,
-        engine_adapter=agent.engine_adapter,
-        instructions=agent.instructions,
-        current_profile_version=agent.current_profile_version,
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-        role_name=agent.role.name if agent.role else None,
-        department_name=agent.department.name if agent.department else None,
-        skills=[AgentSkillOut.model_validate(s) for s in agent.skills],
-    )
+    return _build_agent_out(agent)
 
 @router.patch("/agents/{agent_id}", response_model=AIAgentOut)
 def update_agent(agent_id: str, update_in: AIAgentUpdate, db: Session = Depends(get_db)):
@@ -189,13 +166,15 @@ def update_agent(agent_id: str, update_in: AIAgentUpdate, db: Session = Depends(
         agent.max_concurrency = update_in.max_concurrency
     if update_in.engine_adapter is not None:
         agent.engine_adapter = update_in.engine_adapter
+    if update_in.llm_profile_id is not None:
+        agent.llm_profile_id = update_in.llm_profile_id.strip() if update_in.llm_profile_id.strip() else None
 
     if instruction_changed:
         pv = AgentProfileVersion(
             agent_id=agent.id,
             version_number=agent.current_profile_version,
             instructions=agent.instructions,
-            config_snapshot={"max_concurrency": agent.max_concurrency, "engine": agent.engine_adapter},
+            config_snapshot={"max_concurrency": agent.max_concurrency, "engine": agent.engine_adapter, "llm_profile_id": agent.llm_profile_id},
             change_rationale=update_in.change_rationale or "Instruction update"
         )
         db.add(pv)
@@ -211,29 +190,10 @@ def update_agent(agent_id: str, update_in: AIAgentUpdate, db: Session = Depends(
             "instruction_changed": instruction_changed,
             "version": agent.current_profile_version,
             "lifecycle_state": agent.lifecycle_state,
+            "llm_profile_id": agent.llm_profile_id,
         }
     ))
 
     db.commit()
     db.refresh(agent)
-
-    return AIAgentOut(
-        id=agent.id,
-        name=agent.name,
-        title=agent.title,
-        role_id=agent.role_id,
-        department_id=agent.department_id,
-        lifecycle_state=agent.lifecycle_state,
-        availability_state=agent.availability_state,
-        qualification_state=agent.qualification_state,
-        max_concurrency=agent.max_concurrency,
-        current_concurrency=agent.current_concurrency,
-        engine_adapter=agent.engine_adapter,
-        instructions=agent.instructions,
-        current_profile_version=agent.current_profile_version,
-        created_at=agent.created_at,
-        updated_at=agent.updated_at,
-        role_name=agent.role.name if agent.role else None,
-        department_name=agent.department.name if agent.department else None,
-        skills=[AgentSkillOut.model_validate(s) for s in agent.skills],
-    )
+    return _build_agent_out(agent)

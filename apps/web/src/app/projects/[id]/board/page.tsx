@@ -156,6 +156,9 @@ interface Agent {
   id: string;
   name: string;
   title: string;
+  llm_profile_id?: string | null;
+  llm_profile_name?: string | null;
+  llm_model?: string | null;
 }
 
 interface Sprint {
@@ -1055,9 +1058,24 @@ export default function ScrumBoardPage({
 
                         {/* Assignee */}
                         <div className="flex items-center justify-between text-[11px] pt-1">
-                          <div className="flex items-center space-x-1 text-textMuted-light dark:text-textMuted-dark truncate">
+                          <div className="flex items-center space-x-1.5 text-textMuted-light dark:text-textMuted-dark truncate">
                             <User className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{item.assignee_name || "Unassigned"}</span>
+                            {(() => {
+                              const assigned = agents.find((a) => a.id === item.assignee_agent_id);
+                              if (assigned?.llm_model) {
+                                return (
+                                  <span
+                                    className="inline-flex items-center space-x-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-[85px] truncate flex-shrink-0"
+                                    title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
+                                  >
+                                    <Sparkles className="w-2.5 h-2.5 flex-shrink-0" />
+                                    <span className="truncate">{assigned.llm_model}</span>
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           {!item.assignee_name && (
                             <button
@@ -1124,11 +1142,17 @@ export default function ScrumBoardPage({
                                   handleTriggerRun(item.id);
                                 }}
                                 disabled={triggeringRunId === item.id}
-                                title="Run MockEngineAdapter simulation in workspace"
+                                title="Jalankan agen untuk mengeksekusi tugas ini"
                                 className="w-full py-1 px-2 rounded text-[10px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center space-x-1 shadow-xs"
                               >
                                 <Sparkles className="w-3 h-3" />
-                                <span>{triggeringRunId === item.id ? "Running..." : "Run Agent (Simulate)"}</span>
+                                <span>
+                                  {triggeringRunId === item.id
+                                    ? "Running..."
+                                    : agents.find((a) => a.id === item.assignee_agent_id)?.llm_model
+                                    ? `Run Agent (${agents.find((a) => a.id === item.assignee_agent_id)?.llm_model})`
+                                    : "Run Agent"}
+                                </span>
                               </button>
                             </div>
                           )}
@@ -1165,11 +1189,17 @@ export default function ScrumBoardPage({
                                   handleTriggerRun(item.id);
                                 }}
                                 disabled={triggeringRunId === item.id}
-                                title="Run MockEngineAdapter simulation in workspace"
+                                title="Jalankan agen untuk mengeksekusi tugas ini"
                                 className="w-full py-1 px-2 rounded text-[10px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center space-x-1 shadow-xs"
                               >
                                 <Sparkles className="w-3 h-3" />
-                                <span>{triggeringRunId === item.id ? "Running..." : "Run Agent (Simulate)"}</span>
+                                <span>
+                                  {triggeringRunId === item.id
+                                    ? "Running..."
+                                    : agents.find((a) => a.id === item.assignee_agent_id)?.llm_model
+                                    ? `Run Agent (${agents.find((a) => a.id === item.assignee_agent_id)?.llm_model})`
+                                    : "Run Agent"}
+                                </span>
                               </button>
                             </div>
                           )}
@@ -1329,6 +1359,23 @@ export default function ScrumBoardPage({
                       <User className="w-3.5 h-3.5 text-accent" />
                       <span>{selectedItem.assignee_name || "Belum Ditugaskan"}</span>
                     </span>
+                    {(() => {
+                      const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                      if (assigned?.llm_model) {
+                        return (
+                          <div className="mt-1 flex items-center space-x-1.5">
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium">
+                              <Sparkles className="w-2.5 h-2.5 text-purple-500" />
+                              <span>{assigned.llm_model}</span>
+                            </span>
+                            <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                              ({assigned.llm_profile_name || "Default Sistem"})
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div>
                     <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Estimate:</span>
@@ -1513,7 +1560,9 @@ export default function ScrumBoardPage({
                       isLoading={triggeringRunId === selectedItem.id}
                       leftIcon={<Sparkles className="w-3.5 h-3.5" />}
                     >
-                      Run Agent (Simulate)
+                      {agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model
+                        ? `Run Agent (${agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model})`
+                        : "Run Agent"}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_progress")}>
                       Manual Start →
@@ -1528,7 +1577,9 @@ export default function ScrumBoardPage({
                       isLoading={triggeringRunId === selectedItem.id}
                       leftIcon={<Sparkles className="w-3.5 h-3.5" />}
                     >
-                      Run Agent (Simulate)
+                      {agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model
+                        ? `Run Agent (${agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model})`
+                        : "Run Agent"}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_review")}>
                       Manual Review →

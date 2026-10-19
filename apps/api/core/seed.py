@@ -591,6 +591,14 @@ new file mode 100644
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE ai_agents ADD COLUMN llm_profile_id VARCHAR(64)"))
+            conn.commit()
+    except Exception:
+        pass
+
     db = SessionLocal()
     try:
         seed_database(db)

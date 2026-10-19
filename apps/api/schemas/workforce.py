@@ -30,6 +30,7 @@ class AIAgentBase(BaseModel):
     qualification_state: str = Field(default="not_tested")
     max_concurrency: int = Field(default=2, ge=1, le=10)
     engine_adapter: str = Field(default="mock")
+    llm_profile_id: Optional[str] = None
     instructions: Optional[str] = None
 
 class AIAgentCreate(AIAgentBase):
@@ -45,6 +46,7 @@ class AIAgentUpdate(BaseModel):
     qualification_state: Optional[str] = None
     max_concurrency: Optional[int] = None
     engine_adapter: Optional[str] = None
+    llm_profile_id: Optional[str] = None
     instructions: Optional[str] = None
     change_rationale: Optional[str] = None
 
@@ -56,6 +58,8 @@ class AIAgentOut(AIAgentBase):
     updated_at: datetime
     role_name: Optional[str] = None
     department_name: Optional[str] = None
+    llm_profile_name: Optional[str] = None
+    llm_model: Optional[str] = None
     skills: List[AgentSkillOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

@@ -45,9 +45,23 @@ interface Agent {
   max_concurrency: number;
   current_concurrency: number;
   engine_adapter: string;
+  llm_profile_id?: string | null;
+  llm_profile_name?: string | null;
+  llm_model?: string | null;
   instructions?: string;
   current_profile_version: number;
   skills: AgentSkill[];
+}
+
+interface LLMConfig {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  is_default: boolean;
+  status: string;
+  available_models: string[];
 }
 
 interface Department {
@@ -67,6 +81,7 @@ export default function WorkforcePage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<JobRole[]>([]);
+  const [llms, setLlms] = useState<LLMConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,20 +98,24 @@ export default function WorkforcePage() {
   const [newTitle, setNewTitle] = useState("");
   const [newDeptId, setNewDeptId] = useState("");
   const [newRoleId, setNewRoleId] = useState("");
+  const [newLLMProfileId, setNewLLMProfileId] = useState("");
   const [newInstructions, setNewInstructions] = useState("");
   const [newSkills, setNewSkills] = useState("");
 
   // Inspect Drawer State
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [drawerLLMProfileId, setDrawerLLMProfileId] = useState("");
+  const [updatingLLM, setUpdatingLLM] = useState(false);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [agentsRes, deptsRes, rolesRes] = await Promise.all([
+      const [agentsRes, deptsRes, rolesRes, llmsRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/v1/workforce/agents"),
         fetch("http://127.0.0.1:8000/api/v1/organization/departments"),
         fetch("http://127.0.0.1:8000/api/v1/organization/roles"),
+        fetch("http://127.0.0.1:8000/api/v1/system/llms"),
       ]);
 
       if (!agentsRes.ok || !deptsRes.ok || !rolesRes.ok) {
@@ -106,10 +125,12 @@ export default function WorkforcePage() {
       const agentsData = await agentsRes.json();
       const deptsData = await deptsRes.json();
       const rolesData = await rolesRes.json();
+      const llmsData = llmsRes.ok ? await llmsRes.json() : [];
 
       setAgents(agentsData);
       setDepartments(deptsData);
       setRoles(rolesData);
+      setLlms(llmsData);
       if (deptsData.length > 0) setNewDeptId(deptsData[0].id);
       if (rolesData.length > 0) setNewRoleId(rolesData[0].id);
     } catch (err: unknown) {
@@ -149,6 +170,7 @@ export default function WorkforcePage() {
         qualification_state: "not_tested",
         max_concurrency: 1,
         engine_adapter: "mock",
+        llm_profile_id: newLLMProfileId ? newLLMProfileId.trim() : undefined,
         instructions: newInstructions.trim() || undefined,
         initial_skills: skillsArray,
       };
@@ -167,6 +189,7 @@ export default function WorkforcePage() {
       setIsModalOpen(false);
       setNewName("");
       setNewTitle("");
+      setNewLLMProfileId("");
       setNewInstructions("");
       setNewSkills("");
       await fetchData();
@@ -178,6 +201,33 @@ export default function WorkforcePage() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleUpdateAgentLLM = async () => {
+    if (!selectedAgent) return;
+    try {
+      setUpdatingLLM(true);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/workforce/agents/${selectedAgent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          llm_profile_id: drawerLLMProfileId || "",
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || "Gagal memperbarui model LLM agen");
+      }
+
+      const updatedAgent = await res.json();
+      setSelectedAgent(updatedAgent);
+      setAgents((prev) => prev.map((a) => (a.id === updatedAgent.id ? updatedAgent : a)));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Gagal memperbarui LLM agen");
+    } finally {
+      setUpdatingLLM(false);
     }
   };
 
@@ -320,7 +370,7 @@ export default function WorkforcePage() {
                   <th className="py-2.5 px-4">Department</th>
                   <th className="py-2.5 px-4">Lifecycle</th>
                   <th className="py-2.5 px-4">Qualification</th>
-                  <th className="py-2.5 px-4">Engine</th>
+                  <th className="py-2.5 px-4">Model LLM</th>
                   <th className="py-2.5 px-4 w-44">Concurrency</th>
                   <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
@@ -364,7 +414,15 @@ export default function WorkforcePage() {
                         <StatusBadge variant={qualificationBadge.variant} label={qualificationBadge.label} />
                       </td>
                       <td className="py-3 px-4">
-                        <StatusBadge variant="simulated" label={agent.engine_adapter} />
+                        <div className="flex flex-col space-y-0.5">
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-fit">
+                            <Sparkles className="w-3 h-3 text-purple-500" />
+                            <span className="font-semibold">{agent.llm_model || "gemini-2.0-flash"}</span>
+                          </span>
+                          <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                            {agent.llm_profile_id ? (agent.llm_profile_name || "Custom LLM") : "Default Sistem"}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-4">
                         <CapacityIndicator
@@ -377,7 +435,10 @@ export default function WorkforcePage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setSelectedAgent(agent)}
+                          onClick={() => {
+                            setSelectedAgent(agent);
+                            setDrawerLLMProfileId(agent.llm_profile_id || "");
+                          }}
                         >
                           Inspect
                         </Button>
@@ -452,6 +513,51 @@ export default function WorkforcePage() {
                 <div>
                   <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Qualification:</span>
                   <span className="font-semibold">{selectedAgent.qualification_state.toUpperCase()}</span>
+                </div>
+              </div>
+
+              {/* LLM Model & Engine Assignment */}
+              <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark">
+                <span className="font-semibold block mb-1.5 flex items-center space-x-1.5 text-textPrimary-light dark:text-textPrimary-dark">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Model LLM & Engine:</span>
+                </span>
+                <div className="p-3 bg-canvas-light dark:bg-canvas-dark rounded border border-borderBase-light dark:border-borderBase-dark space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-textMuted-light dark:text-textMuted-dark text-[11px]">Model Aktif:</span>
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium">
+                      <span>{selectedAgent.llm_model || "gemini-2.0-flash"}</span>
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50">
+                    <label className="text-[11px] text-textMuted-light dark:text-textMuted-dark block">
+                      Ganti Penugasan Model:
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value={drawerLLMProfileId}
+                        onChange={(e) => setDrawerLLMProfileId(e.target.value)}
+                        className="flex-1 h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="">
+                          Gunakan Default Sistem ({llms.find((l) => l.is_default)?.model || "gemini-2.0-flash"})
+                        </option>
+                        {llms.map((llm) => (
+                          <option key={llm.id} value={llm.id}>
+                            {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        onClick={handleUpdateAgentLLM}
+                        isLoading={updatingLLM}
+                        disabled={drawerLLMProfileId === (selectedAgent.llm_profile_id || "")}
+                      >
+                        Terapkan
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -562,6 +668,27 @@ export default function WorkforcePage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="font-medium block mb-1">Model LLM / Engine</label>
+                <select
+                  value={newLLMProfileId}
+                  onChange={(e) => setNewLLMProfileId(e.target.value)}
+                  className="w-full h-8 px-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="">
+                    Gunakan Default Sistem ({llms.find((l) => l.is_default)?.model || "gemini-2.0-flash"})
+                  </option>
+                  {llms.map((llm) => (
+                    <option key={llm.id} value={llm.id}>
+                      {llm.name} ({llm.model}) {llm.is_default ? "★ Default" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-textMuted-light dark:text-textMuted-dark mt-1">
+                  Pilih model LLM spesifik untuk persona agen ini, atau biarkan default sistem.
+                </p>
               </div>
 
               <div>

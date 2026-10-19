@@ -13,6 +13,7 @@ def test_workforce_agents(client):
     assert atlas["lifecycle_state"] == "active"
     assert atlas["qualification_state"] == "passed"
     assert atlas["engine_adapter"] == "mock"
+    assert "llm_model" in atlas
     assert len(atlas["skills"]) >= 2
 
     # 3. Create a new agent
@@ -40,13 +41,16 @@ def test_workforce_agents(client):
     assert created["name"] == "Dimas Saputra"
     assert created["current_profile_version"] == 1
     assert len(created["skills"]) == 2
+    assert "llm_model" in created
 
-    # 4. Update instructions & verify version increment
+    # 4. Update instructions & verify version increment + assign custom llm_profile_id
     agent_id = created["id"]
     update_res = client.patch(f"/api/v1/workforce/agents/{agent_id}", json={
         "instructions": "Updated: Enforce strict type hints and Pydantic validation.",
-        "change_rationale": "Updated persona rules"
+        "change_rationale": "Updated persona rules",
+        "llm_profile_id": "profile-test-123"
     })
     assert update_res.status_code == 200
     updated = update_res.json()
     assert updated["current_profile_version"] == 2
+    assert updated["llm_profile_id"] == "profile-test-123"

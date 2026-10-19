@@ -25,6 +25,7 @@ class AIAgent(Base):
     max_concurrency = Column(Integer, default=2)
     current_concurrency = Column(Integer, default=0)
     engine_adapter = Column(String(64), default="mock") # mock, claude, codex, etc.
+    llm_profile_id = Column(String(64), nullable=True, default=None) # References configured LLM profile in storage/llm_configs.json
     
     # System Instructions / Persona
     instructions = Column(Text, nullable=True)

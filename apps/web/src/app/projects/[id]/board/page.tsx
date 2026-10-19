@@ -334,9 +334,13 @@ export default function ScrumBoardPage({
   const [pmResponse, setPmResponse] = useState<string | null>(null);
   const [pmError, setPmError] = useState<string | null>(null);
 
-  // Auto-Plan State
+  // Auto-Plan State & Pipeline Stepper
   const [autoPlanning, setAutoPlanning] = useState(false);
   const [autoPlanSuccess, setAutoPlanSuccess] = useState<string | null>(null);
+  const [isAutoPlanPipelineOpen, setIsAutoPlanPipelineOpen] = useState(false);
+  const [autoPlanStep, setAutoPlanStep] = useState(0);
+  const [autoPlanStage, setAutoPlanStage] = useState<"pipeline" | "completed">("pipeline");
+  const [autoPlanResult, setAutoPlanResult] = useState<any>(null);
 
   // Sprint Start Approval State
   const [isSprintApprovalOpen, setIsSprintApprovalOpen] = useState(false);
@@ -461,6 +465,14 @@ export default function ScrumBoardPage({
   const handleAutoPlan = async () => {
     try {
       setAutoPlanning(true);
+      setIsAutoPlanPipelineOpen(true);
+      setAutoPlanStage("pipeline");
+      setAutoPlanStep(1);
+
+      setTimeout(() => setAutoPlanStep(2), 700);
+      setTimeout(() => setAutoPlanStep(3), 1500);
+      setTimeout(() => setAutoPlanStep(4), 2200);
+
       const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/pm/auto-plan`, {
         method: "POST",
       });
@@ -469,10 +481,19 @@ export default function ScrumBoardPage({
         throw new Error(err.detail || "Gagal melakukan auto-planning.");
       }
       const data = await res.json();
+      setAutoPlanResult(data);
       setAutoPlanSuccess(data.message);
-      await fetchBoardData();
+
+      setTimeout(() => {
+        setAutoPlanStep(5);
+        setTimeout(() => {
+          setAutoPlanStage("completed");
+          fetchBoardData();
+        }, 700);
+      }, 3000);
     } catch (err: any) {
       alert(`Auto-Plan Error: ${err.message}`);
+      setIsAutoPlanPipelineOpen(false);
     } finally {
       setAutoPlanning(false);
     }
@@ -3508,6 +3529,218 @@ export default function ScrumBoardPage({
                 Mulai Sprint Ini →
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Auto-Planning Live Pipeline Modal */}
+      {isAutoPlanPipelineOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold ${
+                  autoPlanStage === "completed"
+                    ? "bg-status-success/15 text-status-success"
+                    : "bg-accent/15 text-accent animate-pulse"
+                }`}>
+                  {autoPlanStage === "completed" ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : (
+                    <Bot className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center gap-2">
+                    <span>
+                      {autoPlanStage === "completed"
+                        ? "Perencanaan Backlog & Sprints Selesai!"
+                        : "Dewi Lestari sedang Merancang Backlog"}
+                    </span>
+                    {autoPlanStage === "pipeline" && (
+                      <Sparkles className="w-3.5 h-3.5 text-accent animate-spin" />
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Technical Product Owner & Agile Delivery Lead
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAutoPlanPipelineOpen(false)}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {autoPlanStage === "pipeline" ? (
+              <div className="space-y-4">
+                {/* Progress Bar */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    <span>Progres Pipeline Perencanaan:</span>
+                    <span className="font-mono font-semibold text-accent">{Math.min(100, autoPlanStep * 20)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark rounded-full overflow-hidden border border-borderBase-light dark:border-borderBase-dark">
+                    <div
+                      className="h-full bg-accent transition-all duration-500 rounded-full"
+                      style={{ width: `${Math.min(100, autoPlanStep * 20)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 5 Pipeline Steps */}
+                <div className="space-y-2 text-xs">
+                  {[
+                    {
+                      step: 1,
+                      title: "Dekomposisi Sasaran & Roadmap",
+                      desc: `Menganalisis tujuan '${project?.name}': membedah sasaran strategis menjadi 3 fase progresif.`,
+                      actor: "Dewi Lestari",
+                    },
+                    {
+                      step: 2,
+                      title: "Penyusunan 3 Progressive Sprints",
+                      desc: "Menyusun Sprint 1 (Foundation & Setup), Sprint 2 (Core Features & UI), dan Sprint 3 (SEO & Launch).",
+                      actor: "Dewi Lestari",
+                    },
+                    {
+                      step: 3,
+                      title: "Perumusan Backlog & Acceptance Criteria",
+                      desc: "Merumuskan ~9 User Stories dengan Fibonacci points, kriteria pengujian terukur, dan DoD.",
+                      actor: "Dewi Lestari",
+                    },
+                    {
+                      step: 4,
+                      title: "Smart Staffing & Alokasi Agen",
+                      desc: "Memadankan skill agen terbaik: Frontend Specialist, QA Sentinel, Backend Architect.",
+                      actor: "Capability Matcher",
+                    },
+                    {
+                      step: 5,
+                      title: "Penyiapan Gerbang Persetujuan Sprint 1",
+                      desc: "Sprint 1 disiapkan dalam status 'Pending Approval' menunggu persetujuan kickoff dari Anda.",
+                      actor: "Governance Engine",
+                    },
+                  ].map((st) => {
+                    const isDone = autoPlanStep > st.step;
+                    const isCurrent = autoPlanStep === st.step;
+
+                    return (
+                      <div
+                        key={st.step}
+                        className={`p-3 rounded-lg border transition-all space-y-1 ${
+                          isDone
+                            ? "border-status-success/30 bg-status-success/5"
+                            : isCurrent
+                            ? "border-accent/50 bg-accent/5 dark:bg-accent/10 shadow-xs ring-1 ring-accent/30"
+                            : "border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark opacity-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {isDone ? (
+                              <CheckCircle2 className="w-4 h-4 text-status-success shrink-0" />
+                            ) : isCurrent ? (
+                              <Clock className="w-4 h-4 text-accent shrink-0 animate-pulse" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full border border-textMuted-light/40 dark:border-textMuted-dark/40 shrink-0 flex items-center justify-center text-[9px] font-mono">
+                                {st.step}
+                              </div>
+                            )}
+                            <span className={`font-semibold ${isCurrent ? "text-accent" : "text-textPrimary-light dark:text-textPrimary-dark"}`}>
+                              {st.title}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark">
+                            {st.actor}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark pl-6 leading-relaxed">
+                          {st.desc}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-2.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark flex items-center justify-center gap-2 text-xs text-textMuted-light dark:text-textMuted-dark">
+                  <Sparkles className="w-3.5 h-3.5 text-accent animate-spin" />
+                  <span>Membentuk User Stories &amp; kriteria pengujian...</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                {/* Sprints Overview */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                    Struktur Sprints yang Dihasilkan:
+                  </span>
+
+                  <div className="p-3 rounded-lg border border-status-warning/40 bg-status-warning/10 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        Sprint 1: Foundation, Architecture & Setup
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-warning/20 text-status-warning font-bold uppercase">
+                        Pending Approval ⚠️
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                      3 Stories (13 SP) • Setup AppShell, Hero Section & CI/CD • Siap ditinjau &amp; disetujui.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        Sprint 2: Core Features, Services & Engagement
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-medium">
+                        Planning
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                      3 Stories (13 SP) • Service Cards, Contact Form, Testimonials Carousel.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        Sprint 3: SEO Optimization, Performance & Launch
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-medium">
+                        Planning
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                      3 Stories (11 SP) • Footer & Legal, OpenGraph & JSON-LD, Lighthouse 90+ Audit.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                  <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Sprint 1 kini siap ditinjau di Board.
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setIsAutoPlanPipelineOpen(false);
+                      setIsSprintApprovalOpen(true);
+                    }}
+                    leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  >
+                    Tinjau &amp; Setujui Sprint 1 →
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

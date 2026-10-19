@@ -259,6 +259,63 @@ class PMAssistantService:
             "stories_count": len(created_items),
             "sprint_1_id": created_sprints[0].id if created_sprints else None,
             "sprint_1_status": created_sprints[0].status if created_sprints else None,
+            "pipeline_summary": [
+                {
+                    "step": 1,
+                    "title": "Goal & Architecture Decomposition",
+                    "actor": "Dewi Lestari (Technical Product Owner)",
+                    "detail": f"Menganalisis tujuan '{p_name}': {p_goal}. Menetapkan arsitektur 3 fase progresif.",
+                    "status": "completed"
+                },
+                {
+                    "step": 2,
+                    "title": "Progressive Sprints Structuring",
+                    "actor": "Dewi Lestari (Scrum Lead)",
+                    "detail": "Menyusun Sprint 1 (Foundation & Setup), Sprint 2 (Core Features & UI), dan Sprint 3 (SEO & Deploy).",
+                    "status": "completed"
+                },
+                {
+                    "step": 3,
+                    "title": "Backlog & Acceptance Criteria Formulation",
+                    "actor": "Dewi Lestari",
+                    "detail": f"Merumuskan {len(created_items)} User Stories & Tasks lengkap dengan Fibonacci Story Points, Acceptance Criteria, dan DoD.",
+                    "status": "completed"
+                },
+                {
+                    "step": 4,
+                    "title": "Agent Capability Matching & Staffing",
+                    "actor": "Dewi Lestari & Workforce Scheduler",
+                    "detail": "Menugaskan agen terbaik berdasarkan skill match: Frontend Specialist, QA Sentinel, Backend/Arch.",
+                    "status": "completed"
+                },
+                {
+                    "step": 5,
+                    "title": "Sprint 1 Approval Gate Preparation",
+                    "actor": "AgencyOS Governance Engine",
+                    "detail": "Sprint 1 disiapkan dalam status 'pending_approval' menunggu tinjauan dan konfirmasi Project Owner.",
+                    "status": "ready_for_approval"
+                }
+            ],
+            "sprints": [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "goal": s.goal,
+                    "status": s.status,
+                    "stories_count": len([item for item in created_items if item.sprint_id == s.id])
+                } for s in created_sprints
+            ],
+            "items": [
+                {
+                    "id": i.id,
+                    "key": i.key,
+                    "title": i.title,
+                    "type": i.type,
+                    "points": i.estimate_points,
+                    "sprint_id": i.sprint_id,
+                    "assignee_id": i.assignee_agent_id
+                } for i in created_items
+            ]
         }
 
     @classmethod

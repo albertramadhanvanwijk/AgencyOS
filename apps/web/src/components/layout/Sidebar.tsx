@@ -31,13 +31,10 @@ export function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
 
     const fetchApprovalsCount = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/v1/recruitment/requests");
+        const res = await fetch("http://127.0.0.1:8000/api/v1/approvals/summary");
         if (res.ok && isMounted) {
           const data = await res.json();
-          const count = data.filter(
-            (r: any) => r.status === "qualified" || r.status === "pending_approval"
-          ).length;
-          setPendingApprovalsCount(count);
+          setPendingApprovalsCount(data.total_pending_count ?? 0);
         }
       } catch {
         // Blip recovery

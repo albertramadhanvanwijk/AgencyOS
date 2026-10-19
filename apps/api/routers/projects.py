@@ -513,6 +513,19 @@ def update_sprint_status(
     if target_status not in ["active", "completed", "planning"]:
         raise HTTPException(status_code=400, detail="Invalid sprint status. Must be 'active', 'completed', or 'planning'.")
 
+    # Enforce Jira/Scrum single active sprint rule
+    if target_status == "active":
+        other_active = db.query(Sprint).filter(
+            Sprint.project_id == project_id,
+            Sprint.id != sprint_id,
+            Sprint.status == "active"
+        ).first()
+        if other_active:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tidak dapat memulai '{sprint.name}' karena '{other_active.name}' masih berlangsung. Selesaikan sprint aktif terlebih dahulu."
+            )
+
     prev_status = sprint.status
     sprint.status = target_status
 

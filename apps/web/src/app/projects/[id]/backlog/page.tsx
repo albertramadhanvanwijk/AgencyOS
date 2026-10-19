@@ -725,14 +725,44 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                       <span className="font-mono text-textMuted-light dark:text-textMuted-dark">
                         Beban: <strong>{totalPoints}</strong> / {sprint.capacity_points} SP
                       </span>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleStartSprint(sprint.id)}
-                        leftIcon={<Play className="w-3.5 h-3.5" />}
-                      >
-                        Start Sprint
-                      </Button>
+                      {activeSprint ? (
+                        <div className="flex items-center space-x-2">
+                          <span
+                            className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
+                            title={`Sprint '${activeSprint.name}' sedang aktif. Aturan Scrum mewajibkan satu sprint aktif dalam satu waktu.`}
+                          >
+                            <span>🔒</span> Selesaikan {activeSprint.name} dulu
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled
+                            title={`Sprint '${activeSprint.name}' sedang berlangsung. Selesaikan sprint aktif terlebih dahulu sebelum memulai sprint ini.`}
+                            leftIcon={<Play className="w-3.5 h-3.5" />}
+                          >
+                            Start Sprint
+                          </Button>
+                        </div>
+                      ) : sprint.status === "pending_approval" ? (
+                        <Link href={`/projects/${projectId}/board`}>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                          >
+                            Tinjau di Board
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleStartSprint(sprint.id)}
+                          leftIcon={<Play className="w-3.5 h-3.5" />}
+                        >
+                          Start Sprint
+                        </Button>
+                      )}
                     </div>
                   </div>
 

@@ -433,14 +433,17 @@ class PMAssistantService:
         if not sprint:
             raise ValueError(f"Sprint with ID '{sprint_id}' not found.")
 
-        # Ensure no other sprint is active in this project
+        # Ensure no other sprint is active in this project (Jira/Scrum single active sprint rule)
         other_active = db.query(Sprint).filter(
             Sprint.project_id == project_id,
             Sprint.id != sprint_id,
             Sprint.status == "active"
-        ).all()
-        for s in other_active:
-            s.status = "completed"
+        ).first()
+        if other_active:
+            raise ValueError(
+                f"Tidak dapat memulai '{sprint.name}' karena '{other_active.name}' masih berlangsung. "
+                "Selesaikan sprint aktif melalui Sprint Review & Retrospective terlebih dahulu."
+            )
 
         sprint.status = "active"
         sprint.approved_by = approved_by or "Project Owner"

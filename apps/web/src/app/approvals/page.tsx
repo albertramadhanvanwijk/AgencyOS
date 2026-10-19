@@ -23,7 +23,55 @@ import {
   History,
   FileCheck,
   Sparkles,
+  Play,
+  FolderKanban,
+  Clock,
+  RotateCcw,
+  FileText,
+  CheckCircle,
 } from "lucide-react";
+
+interface PendingSprintApproval {
+  id: string;
+  name: string;
+  goal: string;
+  capacity_points: number;
+  created_at: string;
+  project_id: string;
+  project_name: string;
+  project_key: string;
+  items_count: number;
+  total_points: number;
+  stories_preview: Array<{
+    id: string;
+    key: string;
+    title: string;
+    type: string;
+    points: number;
+    priority: string;
+    assignee_name: string;
+    status: string;
+  }>;
+  can_start_now: boolean;
+  blocking_active_sprint_name?: string | null;
+}
+
+interface PendingWorkItemApproval {
+  id: string;
+  key: string;
+  title: string;
+  type: string;
+  priority: string;
+  estimate_points: number;
+  project_id: string;
+  project_name: string;
+  assignee_name: string;
+  acceptance_criteria: string[];
+  definition_of_done: string[];
+  git_branch?: string;
+  pull_request_url?: string;
+  updated_at?: string;
+}
 
 interface RecruitmentRequest {
   id: string;
@@ -70,11 +118,14 @@ interface ScorecardData {
 
 export default function ApprovalsPage() {
   const [requests, setRequests] = useState<RecruitmentRequest[]>([]);
+  const [pendingSprints, setPendingSprints] = useState<PendingSprintApproval[]>([]);
+  const [pendingWorkItems, setPendingWorkItems] = useState<PendingWorkItemApproval[]>([]);
+  const [approvingSprintId, setApprovingSprintId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Tabs: 'pending' (qualified/pending) vs 'history' (activated/rejected)
-  const [activeTab, setActiveTab] = useState<"pending" | "history">("pending");
+  // Tabs: 'sprints' | 'workforce' | 'work_items' | 'history'
+  const [activeTab, setActiveTab] = useState<"sprints" | "workforce" | "work_items" | "history">("sprints");
 
   // Scorecard modal state
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
@@ -102,12 +153,29 @@ export default function ApprovalsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("http://127.0.0.1:8000/api/v1/recruitment/requests");
-      if (!res.ok) {
-        throw new Error("Failed to load approval requests from server.");
+      const [recRes, sumRes] = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/v1/recruitment/requests"),
+        fetch("http://127.0.0.1:8000/api/v1/approvals/summary"),
+      ]);
+
+      if (recRes.ok) {
+        const recData = await recRes.json();
+        setRequests(recData);
       }
-      const data = await res.json();
-      setRequests(data);
+      if (sumRes.ok) {
+        const sumData = await sumRes.json();
+        setPendingSprints(sumData.pending_sprints || []);
+        setPendingWorkItems(sumData.pending_work_items || []);
+        
+        // Auto-select tab if current tab has 0 items but another tab has items
+        if (sumData.pending_sprints && sumData.pending_sprints.length > 0) {
+          setActiveTab("sprints");
+        } else if (sumData.recruitment_count && sumData.recruitment_count > 0) {
+          setActiveTab("workforce");
+        } else if (sumData.work_item_count && sumData.work_item_count > 0) {
+          setActiveTab("work_items");
+        }
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load approval items.");
     } finally {
@@ -118,6 +186,54 @@ export default function ApprovalsPage() {
   useEffect(() => {
     fetchApprovals();
   }, []);
+
+  const handleApproveSprint = async (projectId: string, sprintId: string) => {
+    try {
+      setApprovingSprintId(sprintId);
+      setActionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/approvals/sprints/${projectId}/${sprintId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved_by: "Project Owner" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal menyetujui sprint.");
+      }
+      const data = await res.json();
+      setActionSuccess(data.message || "Sprint resmi disetujui dan dimulai!");
+      await fetchApprovals();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Gagal menyetujui sprint.");
+    } finally {
+      setApprovingSprintId(null);
+    }
+  };
+
+  const handleApproveWorkItem = async (itemId: string, decision: "approve" | "rework") => {
+    try {
+      setActionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, approver: "Agency Operator" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal memproses review work item.");
+      }
+      setActionSuccess(decision === "approve" ? "Work item disetujui dan ditandai 'Done'." : "Rework diminta untuk work item.");
+      await fetchApprovals();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("approvals-updated"));
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Gagal memproses review work item.");
+    }
+  };
 
   const pendingItems = requests.filter(
     (r) => r.status === "qualified" || r.status === "pending_approval"
@@ -285,38 +401,61 @@ export default function ApprovalsPage() {
       {/* Queue Container */}
       <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark overflow-hidden">
         {/* Header Bar */}
-        <div className="p-4 border-b border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+        <div className="p-4 border-b border-borderBase-light dark:border-borderBase-dark flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-accent" />
               <h2 className="text-sm font-semibold">Governance Sign-Off Gates</h2>
             </div>
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-accent font-semibold">
-              {pendingItems.length} Pending
+              {pendingSprints.length + pendingItems.length + pendingWorkItems.length} Pending
             </span>
           </div>
 
           {/* Tab Selector */}
-          <div className="flex items-center border border-borderBase-light dark:border-borderBase-dark rounded overflow-hidden text-xs">
+          <div className="flex items-center border border-borderBase-light dark:border-borderBase-dark rounded overflow-hidden text-xs flex-wrap">
             <button
-              onClick={() => setActiveTab("pending")}
-              className={`px-3 py-1 font-medium transition-colors ${
-                activeTab === "pending"
+              onClick={() => setActiveTab("sprints")}
+              className={`px-3 py-1 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "sprints"
                   ? "bg-accent text-white"
                   : "bg-surface-light dark:bg-surface-dark text-textMuted-light hover:text-textPrimary-light"
               }`}
             >
-              Pending Approval ({pendingItems.length})
+              <FolderKanban className="w-3.5 h-3.5" />
+              <span>Sprints ({pendingSprints.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("workforce")}
+              className={`px-3 py-1 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "workforce"
+                  ? "bg-accent text-white"
+                  : "bg-surface-light dark:bg-surface-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              <span>Agen Workforce ({pendingItems.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("work_items")}
+              className={`px-3 py-1 font-medium transition-colors flex items-center gap-1.5 ${
+                activeTab === "work_items"
+                  ? "bg-accent text-white"
+                  : "bg-surface-light dark:bg-surface-dark text-textMuted-light hover:text-textPrimary-light"
+              }`}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Work Items Review ({pendingWorkItems.length})</span>
             </button>
             <button
               onClick={() => setActiveTab("history")}
-              className={`px-3 py-1 font-medium transition-colors ${
+              className={`px-3 py-1 font-medium transition-colors flex items-center gap-1.5 ${
                 activeTab === "history"
                   ? "bg-accent text-white"
                   : "bg-surface-light dark:bg-surface-dark text-textMuted-light hover:text-textPrimary-light"
               }`}
             >
-              Sign-Off History ({historyItems.length})
+              <History className="w-3.5 h-3.5" />
+              <span>Sign-Off History ({historyItems.length})</span>
             </button>
           </div>
         </div>
@@ -334,7 +473,101 @@ export default function ApprovalsPage() {
               onRetry={fetchApprovals}
             />
           </div>
-        ) : activeTab === "pending" ? (
+        ) : activeTab === "sprints" ? (
+          pendingSprints.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="Semua Sprint Telah Berjalan / Disetujui"
+                description="Saat ini tidak ada sprint yang menunggu persetujuan kickoff (pending approval)."
+                icon={<CheckCircle2 className="w-6 h-6 text-status-success" />}
+              />
+            </div>
+          ) : (
+            <div className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
+              {pendingSprints.map((sprint) => (
+                <div
+                  key={sprint.id}
+                  className="p-5 hover:bg-canvas-light dark:hover:bg-canvas-dark transition-colors space-y-3.5 text-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark font-semibold text-accent">
+                          {sprint.project_key}
+                        </span>
+                        <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                          {sprint.project_name} • {sprint.name}
+                        </span>
+                        <StatusBadge variant="warning" label="Pending Approval" />
+                      </div>
+                      <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                        Sprint Goal: <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">{sprint.goal}</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-3 text-xs shrink-0">
+                      <span className="font-mono text-textMuted-light dark:text-textMuted-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark px-2.5 py-1 rounded border border-borderBase-light dark:border-borderBase-dark">
+                        Beban: <strong className="text-accent">{sprint.total_points} SP</strong> ({sprint.items_count} Stories) • Kapasitas: {sprint.capacity_points} SP
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stories Preview Chips */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                      Stories yang direncanakan ({sprint.stories_preview.length} dari {sprint.items_count}):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {sprint.stories_preview.map((st) => (
+                        <div
+                          key={st.id}
+                          className="px-2 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-[11px] flex items-center space-x-1.5"
+                        >
+                          <span className="font-mono text-accent font-semibold">{st.key}</span>
+                          <span className="text-textPrimary-light dark:text-textPrimary-dark max-w-[220px] truncate">{st.title}</span>
+                          <span className="text-textMuted-light font-mono text-[10px]">({st.points} SP)</span>
+                          <span className="text-[10px] text-textMuted-light">• {st.assignee_name}</span>
+                        </div>
+                      ))}
+                      {sprint.items_count > sprint.stories_preview.length && (
+                        <span className="text-[11px] text-textMuted-light self-center px-1">
+                          +{sprint.items_count - sprint.stories_preview.length} story lainnya
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Bar */}
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60">
+                    <div>
+                      {!sprint.can_start_now && (
+                        <span className="text-[11px] text-status-warning bg-status-warning/10 border border-status-warning/30 px-2 py-1 rounded flex items-center gap-1 font-medium">
+                          <span>🔒</span> Selesaikan <strong>{sprint.blocking_active_sprint_name}</strong> terlebih dahulu
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Link href={`/projects/${sprint.project_id}/board`}>
+                        <Button variant="outline" size="sm" leftIcon={<FolderKanban className="w-3.5 h-3.5" />}>
+                          Buka Scrum Board
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={!sprint.can_start_now || approvingSprintId === sprint.id}
+                        isLoading={approvingSprintId === sprint.id}
+                        onClick={() => handleApproveSprint(sprint.project_id, sprint.id)}
+                        leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                      >
+                        Setujui & Mulai Sprint Ini →
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : activeTab === "workforce" ? (
           pendingItems.length === 0 ? (
             <div className="p-6">
               <EmptyState
@@ -445,6 +678,89 @@ export default function ApprovalsPage() {
                           </Button>
                         </Link>
                       )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : activeTab === "work_items" ? (
+          pendingWorkItems.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                title="Semua Work Item Telah Selesai / Ditinjau"
+                description="Saat ini tidak ada task atau user story yang menunggu peninjauan Definition of Done (in_review)."
+                icon={<CheckCircle2 className="w-6 h-6 text-status-success" />}
+              />
+            </div>
+          ) : (
+            <div className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
+              {pendingWorkItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-5 hover:bg-canvas-light dark:hover:bg-canvas-dark transition-colors space-y-3 text-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark font-semibold text-accent">
+                          {item.key}
+                        </span>
+                        <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                          {item.title}
+                        </span>
+                        <StatusBadge variant="warning" label="In Review" />
+                      </div>
+                      <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                        Proyek: <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">{item.project_name}</span> • Ditugaskan: <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">{item.assignee_name}</span> • Estimasi: <span className="font-mono text-accent font-semibold">{item.estimate_points} SP</span>
+                      </p>
+                    </div>
+
+                    {item.git_branch && (
+                      <span className="text-[11px] font-mono bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark px-2 py-0.5 rounded text-textMuted-light shrink-0">
+                        {item.git_branch}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* DoD checks preview */}
+                  {item.definition_of_done && item.definition_of_done.length > 0 && (
+                    <div className="p-3 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-xs space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                        Kriteria Definition of Done (DoD):
+                      </span>
+                      <ul className="list-disc pl-4 space-y-0.5 text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                        {item.definition_of_done.map((dod, dIdx) => (
+                          <li key={dod + dIdx}>{dod}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="pt-2 flex items-center justify-between border-t border-borderBase-light/60 dark:border-borderBase-dark/60">
+                    <Link href={`/projects/${item.project_id}/board`}>
+                      <Button variant="outline" size="sm" leftIcon={<FolderKanban className="w-3.5 h-3.5" />}>
+                        Lihat di Board
+                      </Button>
+                    </Link>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleApproveWorkItem(item.id, "rework")}
+                        leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                      >
+                        Minta Revisi (Rework)
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleApproveWorkItem(item.id, "approve")}
+                        leftIcon={<Check className="w-3.5 h-3.5" />}
+                      >
+                        Setujui & Tandai Done
+                      </Button>
                     </div>
                   </div>
                 </div>

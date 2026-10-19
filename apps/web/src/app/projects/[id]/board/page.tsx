@@ -4030,15 +4030,32 @@ export default function ScrumBoardPage({
                     >
                       Batal
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => targetSprint && handleApproveStartSprint(targetSprint.id)}
-                      isLoading={approvingSprint}
-                      leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                    >
-                      Setujui & Mulai Sprint Ini →
-                    </Button>
+                    {activeSprint && activeSprint.id !== targetSprint.id ? (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark px-2.5 py-1 rounded">
+                          🔒 Selesaikan <strong>{activeSprint.name}</strong> terlebih dahulu
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled
+                          title={`Sprint '${activeSprint.name}' masih aktif. Selesaikan sprint aktif melalui Sprint Review & Retrospective terlebih dahulu.`}
+                          leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                        >
+                          Setujui & Mulai Sprint Ini →
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => targetSprint && handleApproveStartSprint(targetSprint.id)}
+                        isLoading={approvingSprint}
+                        leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                      >
+                        Setujui & Mulai Sprint Ini →
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

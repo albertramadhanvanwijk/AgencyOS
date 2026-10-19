@@ -45,5 +45,9 @@ class SprintOut(SprintBase):
     end_date: Optional[datetime] = None
     created_at: datetime
     items_count: Optional[int] = 0
+    retrospective: Optional[dict] = None
+    review_notes: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

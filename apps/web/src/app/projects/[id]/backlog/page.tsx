@@ -992,7 +992,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
             <div className="border border-borderBase-light dark:border-borderBase-dark rounded-lg bg-surface-light dark:bg-surface-dark overflow-hidden shadow-xs divide-y divide-borderBase-light dark:divide-borderBase-dark">
               {productBacklogItems.length === 0 ? (
                 <div className="p-8 text-center text-xs text-textMuted-light dark:text-textMuted-dark">
-                  Tidak ada item backlog yang cocok. Klik tombol <strong>"+ Tambah Backlog Item"</strong> untuk menambahkan ide atau kebutuhan baru.
+                  Tidak ada item backlog yang cocok. Klik tombol <strong>&quot;+ Tambah Backlog Item&quot;</strong> untuk menambahkan ide atau kebutuhan baru.
                 </div>
               ) : (
                 productBacklogItems.map((item) => (

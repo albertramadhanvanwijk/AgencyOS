@@ -62,5 +62,7 @@ class WorkItemOut(WorkItemBase):
     assignee_name: Optional[str] = None
     project_name: Optional[str] = None
     subtasks: List[WorkItemSubtaskOut] = Field(default_factory=list)
+    revision_notes: Optional[str] = None
+    revision_count: Optional[int] = 0
 
     model_config = ConfigDict(from_attributes=True)

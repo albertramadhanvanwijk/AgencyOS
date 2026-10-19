@@ -387,7 +387,7 @@ export default function ApprovalsPage() {
                       </>
                     ) : (
                       <>
-                        Staffing justification: "{item.rationale}". Candidate must execute the automated sandbox qualification benchmark before activation can be approved.
+                        Staffing justification: &quot;{item.rationale}&quot;. Candidate must execute the automated sandbox qualification benchmark before activation can be approved.
                       </>
                     )}
                   </p>

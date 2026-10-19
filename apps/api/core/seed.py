@@ -631,11 +631,28 @@ def init_db():
         ("pull_request_url", "VARCHAR(256)"),
         ("pull_request_number", "INTEGER"),
         ("pull_request_status", "VARCHAR(32) DEFAULT 'draft'"),
+        ("revision_notes", "TEXT"),
+        ("revision_count", "INTEGER DEFAULT 0"),
     ]:
         try:
             from sqlalchemy import text
             with engine.connect() as conn:
                 conn.execute(text(f"ALTER TABLE work_items ADD COLUMN {col} {col_type}"))
+                conn.commit()
+        except Exception:
+            pass
+
+    # Sprint Retrospective & Review migrations
+    for col, col_type in [
+        ("retrospective", "JSON"),
+        ("review_notes", "TEXT"),
+        ("approved_by", "VARCHAR(128)"),
+        ("approved_at", "DATETIME"),
+    ]:
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE sprints ADD COLUMN {col} {col_type}"))
                 conn.commit()
         except Exception:
             pass

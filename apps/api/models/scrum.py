@@ -38,6 +38,10 @@ class WorkItem(Base):
     pull_request_number = Column(Integer, nullable=True)
     pull_request_status = Column(String(32), default="draft") # draft, open, merged, closed
     
+    # Revision & Feedback tracking
+    revision_notes = Column(Text, nullable=True)
+    revision_count = Column(Integer, default=0)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -15,6 +15,7 @@ from apps.api.services.scheduler import scheduler_service
 from apps.api.services.analytics import analytics_service
 
 from apps.api.services.github_service import github_service
+from apps.api.services.pm_assistant import pm_assistant
 
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
 
@@ -207,6 +208,24 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         done_items=done_items,
     )
 
+def _build_sprint_out(s: Sprint, items_count: Optional[int] = None) -> SprintOut:
+    return SprintOut(
+        id=s.id,
+        project_id=s.project_id,
+        name=s.name,
+        goal=s.goal,
+        status=s.status,
+        capacity_points=s.capacity_points,
+        start_date=s.start_date,
+        end_date=s.end_date,
+        created_at=s.created_at,
+        items_count=items_count if items_count is not None else (len(s.work_items) if hasattr(s, "work_items") and s.work_items else 0),
+        retrospective=s.retrospective,
+        review_notes=s.review_notes,
+        approved_by=s.approved_by,
+        approved_at=s.approved_at,
+    )
+
 @router.get("/{project_id}/sprints", response_model=List[SprintOut])
 def list_project_sprints(project_id: str, db: Session = Depends(get_db)):
     p = db.query(Project).filter(
@@ -216,21 +235,7 @@ def list_project_sprints(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found")
 
     sprints = db.query(Sprint).filter(Sprint.project_id == p.id).all()
-    results = []
-    for s in sprints:
-        results.append(SprintOut(
-            id=s.id,
-            project_id=s.project_id,
-            name=s.name,
-            goal=s.goal,
-            status=s.status,
-            capacity_points=s.capacity_points,
-            start_date=s.start_date,
-            end_date=s.end_date,
-            created_at=s.created_at,
-            items_count=len(s.work_items),
-        ))
-    return results
+    return [_build_sprint_out(s) for s in sprints]
 
 @router.post("/{project_id}/sprints", response_model=SprintOut, status_code=status.HTTP_201_CREATED)
 def create_project_sprint(
@@ -310,18 +315,7 @@ def create_project_sprint(
     db.commit()
     db.refresh(new_sprint)
 
-    return SprintOut(
-        id=new_sprint.id,
-        project_id=new_sprint.project_id,
-        name=new_sprint.name,
-        goal=new_sprint.goal,
-        status=new_sprint.status,
-        capacity_points=new_sprint.capacity_points,
-        start_date=new_sprint.start_date,
-        end_date=new_sprint.end_date,
-        created_at=new_sprint.created_at,
-        items_count=rollover_count
-    )
+    return _build_sprint_out(new_sprint, items_count=rollover_count)
 
 def _build_work_item_out(item: WorkItem, project_name: Optional[str] = None) -> WorkItemOut:
     subtasks_out = []
@@ -364,6 +358,8 @@ def _build_work_item_out(item: WorkItem, project_name: Optional[str] = None) -> 
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=project_name or (item.project.name if item.project else None),
         subtasks=subtasks_out,
+        revision_notes=item.revision_notes,
+        revision_count=item.revision_count or 0,
     )
 
 @router.get("/{project_id}/work-items", response_model=List[WorkItemOut])
@@ -537,17 +533,7 @@ def update_sprint_status(
     db.commit()
     db.refresh(sprint)
 
-    return SprintOut(
-        id=sprint.id,
-        project_id=sprint.project_id,
-        name=sprint.name,
-        goal=sprint.goal,
-        status=sprint.status,
-        capacity_points=sprint.capacity_points,
-        start_date=sprint.start_date,
-        end_date=sprint.end_date,
-        created_at=sprint.created_at,
-    )
+    return _build_sprint_out(sprint)
 
 
 @router.get("/{project_id}/analytics/burndown", response_model=SprintBurndownOut)
@@ -571,5 +557,106 @@ def get_project_velocity_analytics(
     Menghitung metrik team velocity (kecepatan rata-rata penyelesaian SP antar-sprint).
     """
     return analytics_service.get_project_velocity(db, project_id)
+
+
+# --- Autonomous Project Manager & Scrum Assistant Endpoints ---
+
+class PMInstructIn(BaseModel):
+    instruction: str
+
+class SprintApproveStartIn(BaseModel):
+    approved_by: Optional[str] = "Project Owner"
+
+class SprintCompleteReviewIn(BaseModel):
+    review_notes: Optional[str] = None
+
+class WorkItemRevisionIn(BaseModel):
+    revision_notes: str
+    requested_by: Optional[str] = "Project Owner"
+
+
+@router.post("/{project_id}/pm/auto-plan")
+def auto_plan_project(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Dewi Lestari (Technical Product Owner) auto-plans 2-3 progressive Sprints
+    and detailed User Stories complete with acceptance criteria, estimates, and assignees.
+    """
+    try:
+        return pm_assistant.auto_plan_project(project_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/pm/instruct")
+def instruct_pm(
+    project_id: str,
+    payload: PMInstructIn,
+    db: Session = Depends(get_db)
+):
+    """
+    Human operator instructs Project Manager in natural language to create,
+    break down, estimate, and assign new tasks/features automatically.
+    """
+    try:
+        return pm_assistant.instruct_pm(project_id, payload.instruction, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/sprints/{sprint_id}/approve-start")
+def approve_start_sprint(
+    project_id: str,
+    sprint_id: str,
+    payload: Optional[SprintApproveStartIn] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Human-in-the-loop gate: officially approves and starts a planned sprint.
+    Activates the sprint and moves its stories to 'ready' for agent execution.
+    """
+    approved_by = payload.approved_by if payload else "Project Owner"
+    try:
+        return pm_assistant.approve_start_sprint(project_id, sprint_id, approved_by, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/sprints/{sprint_id}/complete-review")
+def complete_review_sprint(
+    project_id: str,
+    sprint_id: str,
+    payload: Optional[SprintCompleteReviewIn] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Completes active sprint with AI-generated Sprint Retrospective (Went Well, Bottlenecks, Action Items).
+    Transitions next sprint to 'pending_approval' or marks project as completed.
+    """
+    review_notes = payload.review_notes if payload else None
+    try:
+        return pm_assistant.complete_review_sprint(project_id, sprint_id, review_notes, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/work-items/{work_item_id}/request-revision")
+def request_work_item_revision(
+    project_id: str,
+    work_item_id: str,
+    payload: WorkItemRevisionIn,
+    db: Session = Depends(get_db)
+):
+    """
+    Human operator requests revisions on a task with feedback notes.
+    Reopens task back to In Progress for agent rework without creating duplicate items.
+    """
+    try:
+        return pm_assistant.request_work_item_revision(work_item_id, payload.revision_notes, payload.requested_by, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 

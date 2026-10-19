@@ -46,6 +46,9 @@ import {
   ExternalLink,
   Copy,
   GitPullRequest,
+  Award,
+  Send,
+  MessageSquare,
 } from "lucide-react";
 
 interface AgentRecommendation {
@@ -119,6 +122,8 @@ interface WorkItem {
   pull_request_number?: number;
   pull_request_status?: string;
   subtasks?: WorkItemSubtask[];
+  revision_notes?: string;
+  revision_count?: number;
 }
 
 interface ExecutionRun {
@@ -195,12 +200,20 @@ interface Sprint {
   project_id: string;
   name: string;
   goal?: string;
-  status: "planning" | "active" | "completed";
+  status: string;
   capacity_points: number;
   start_date?: string;
   end_date?: string;
   created_at: string;
   items_count?: number;
+  retrospective?: {
+    went_well: string[];
+    bottlenecks: string[];
+    action_items: string[];
+  };
+  review_notes?: string;
+  approved_by?: string;
+  approved_at?: string;
 }
 
 function getCleanModelBadge(modelName?: string | null): string {
@@ -314,6 +327,34 @@ export default function ScrumBoardPage({
   const [subtaskError, setSubtaskError] = useState<string | null>(null);
   const [copiedBranch, setCopiedBranch] = useState(false);
 
+  // PM Assistant & Autonomous Scrum State
+  const [isPMModalOpen, setIsPMModalOpen] = useState(false);
+  const [pmInstruction, setPmInstruction] = useState("");
+  const [pmSubmitting, setPmSubmitting] = useState(false);
+  const [pmResponse, setPmResponse] = useState<string | null>(null);
+  const [pmError, setPmError] = useState<string | null>(null);
+
+  // Auto-Plan State
+  const [autoPlanning, setAutoPlanning] = useState(false);
+  const [autoPlanSuccess, setAutoPlanSuccess] = useState<string | null>(null);
+
+  // Sprint Start Approval State
+  const [isSprintApprovalOpen, setIsSprintApprovalOpen] = useState(false);
+  const [approvingSprint, setApprovingSprint] = useState(false);
+
+  // Sprint Review & Retro State
+  const [isRetroModalOpen, setIsRetroModalOpen] = useState(false);
+  const [retroSubmitting, setRetroSubmitting] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [retroResult, setRetroResult] = useState<any>(null);
+
+  // Revision Request State
+  const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
+  const [revisionNotes, setRevisionNotes] = useState("");
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
+  const [revisionTargetItem, setRevisionTargetItem] = useState<WorkItem | null>(null);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+
   const fetchBoardData = useCallback(async (filterOverride?: string) => {
     try {
       setLoading(true);
@@ -388,6 +429,121 @@ export default function ScrumBoardPage({
     setIsEditingItem(false);
     setEditError(null);
     setShowInProgressStrategyModal(false);
+  };
+
+  // --- PM Assistant & Autonomous Scrum Handlers ---
+
+  const handleInstructPM = async () => {
+    if (!pmInstruction.trim()) return;
+    try {
+      setPmSubmitting(true);
+      setPmError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/pm/instruct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: pmInstruction }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal memproses instruksi PM.");
+      }
+      const data = await res.json();
+      setPmResponse(data.pm_response);
+      setPmInstruction("");
+      await fetchBoardData();
+    } catch (err: any) {
+      setPmError(err.message || "Terjadi kesalahan memproses instruksi.");
+    } finally {
+      setPmSubmitting(false);
+    }
+  };
+
+  const handleAutoPlan = async () => {
+    try {
+      setAutoPlanning(true);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/pm/auto-plan`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal melakukan auto-planning.");
+      }
+      const data = await res.json();
+      setAutoPlanSuccess(data.message);
+      await fetchBoardData();
+    } catch (err: any) {
+      alert(`Auto-Plan Error: ${err.message}`);
+    } finally {
+      setAutoPlanning(false);
+    }
+  };
+
+  const handleApproveStartSprint = async (sprintId: string) => {
+    try {
+      setApprovingSprint(true);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintId}/approve-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved_by: "Project Owner" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal menyetujui sprint.");
+      }
+      setIsSprintApprovalOpen(false);
+      await fetchBoardData();
+    } catch (err: any) {
+      alert(`Approval Error: ${err.message}`);
+    } finally {
+      setApprovingSprint(false);
+    }
+  };
+
+  const handleCompleteReviewSprint = async (sprintId: string) => {
+    try {
+      setRetroSubmitting(true);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintId}/complete-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ review_notes: reviewNotes }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal menyelesaikan review sprint.");
+      }
+      const data = await res.json();
+      setRetroResult(data);
+      await fetchBoardData();
+    } catch (err: any) {
+      alert(`Retro Error: ${err.message}`);
+    } finally {
+      setRetroSubmitting(false);
+    }
+  };
+
+  const handleRequestRevision = async () => {
+    if (!revisionTargetItem || !revisionNotes.trim()) return;
+    try {
+      setRevisionSubmitting(true);
+      setRevisionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/work-items/${revisionTargetItem.id}/request-revision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revision_notes: revisionNotes, requested_by: "Project Owner" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Gagal mengirim permintaan revisi.");
+      }
+      setIsRevisionModalOpen(false);
+      setRevisionNotes("");
+      setRevisionTargetItem(null);
+      await fetchBoardData();
+    } catch (err: any) {
+      setRevisionError(err.message || "Gagal mengirim revisi.");
+    } finally {
+      setRevisionSubmitting(false);
+    }
   };
 
   const handleSaveItemEdit = async (strategy?: "preserve" | "reset") => {
@@ -906,8 +1062,9 @@ export default function ScrumBoardPage({
     }
   };
 
-  // Active sprint helper
+  // Active and pending approval sprint helpers
   const activeSprint = sprints.find((s) => s.status === "active");
+  const pendingSprint = sprints.find((s) => s.status === "pending_approval");
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -935,6 +1092,8 @@ export default function ScrumBoardPage({
         resolvedSprintId = newSprintId;
       } else if (activeSprint?.id) {
         resolvedSprintId = activeSprint.id;
+      } else if (pendingSprint?.id) {
+        resolvedSprintId = pendingSprint.id;
       }
 
       const payload = {
@@ -992,6 +1151,7 @@ export default function ScrumBoardPage({
     if (selectedSprintFilter === "all") return true;
     if (selectedSprintFilter === "active") {
       if (activeSprint) return item.sprint_id === activeSprint.id;
+      if (pendingSprint) return item.sprint_id === pendingSprint.id;
       return true;
     }
     return item.sprint_id === selectedSprintFilter;
@@ -1017,6 +1177,29 @@ export default function ScrumBoardPage({
             >
               Refresh
             </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setPmError(null);
+                setPmResponse(null);
+                setIsPMModalOpen(true);
+              }}
+              leftIcon={<Sparkles className="w-3.5 h-3.5 text-accent" />}
+            >
+              Instruksi PM (Dewi)
+            </Button>
+            {items.length === 0 && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleAutoPlan}
+                isLoading={autoPlanning}
+                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+              >
+                AI Auto-Plan Backlog
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => {
@@ -1056,6 +1239,113 @@ export default function ScrumBoardPage({
           <span>Analitik & Laporan Sprint</span>
         </Link>
       </div>
+
+      {/* Auto-Plan Success Banner */}
+      {autoPlanSuccess && (
+        <div className="p-3 rounded-md bg-status-success/10 border border-status-success/30 flex items-center justify-between text-xs text-status-success">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{autoPlanSuccess}</span>
+          </div>
+          <button onClick={() => setAutoPlanSuccess(null)} className="p-1 hover:bg-status-success/20 rounded">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Empty State Banner when 0 items */}
+      {!loading && items.length === 0 && (
+        <div className="p-8 rounded-lg border border-accent/30 bg-accent/5 dark:bg-accent/10 space-y-4 text-center max-w-2xl mx-auto my-6 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+              Project Belum Memiliki Backlog & User Stories
+            </h3>
+            <p className="text-xs text-textMuted-light dark:text-textMuted-dark max-w-md mx-auto">
+              Biarkan <strong>Dewi Lestari</strong> (Technical Product Owner) membedah tujuan project Anda secara otomatis menjadi 3 Sprint terstruktur dan User Stories lengkap dengan kriteria penerimaan & penugasan agen.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center items-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleAutoPlan}
+              isLoading={autoPlanning}
+              leftIcon={<Sparkles className="w-4 h-4" />}
+            >
+              AI Auto-Plan Backlog & Sprints (Dewi Lestari)
+            </Button>
+            <Button
+              variant="outline"
+              size="md"
+              onClick={() => {
+                setPmError(null);
+                setPmResponse(null);
+                setIsPMModalOpen(true);
+              }}
+              leftIcon={<Bot className="w-4 h-4" />}
+            >
+              Instruksikan PM
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Sprint Start Approval Banner */}
+      {pendingSprint && items.length > 0 && (
+        <div className="p-4 rounded-lg bg-status-warning/10 border border-status-warning/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start space-x-3 text-textPrimary-light dark:text-textPrimary-dark">
+            <ShieldAlert className="w-5 h-5 text-status-warning flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-semibold text-sm">{pendingSprint.name} Menunggu Persetujuan Anda</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-status-warning/20 text-status-warning border border-status-warning/30">
+                  Pending Approval
+                </span>
+              </div>
+              <p className="text-textMuted-light dark:text-textMuted-dark mt-0.5">
+                Sprint Goal: {pendingSprint.goal || "Delivery tahap 1"}. Tim agen siap bekerja setelah Anda menyetujui komitmen sprint ini.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 self-end sm:self-center">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsSprintApprovalOpen(true)}
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+            >
+              Tinjau & Setujui Sprint
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Active Sprint Banner with Review Action */}
+      {activeSprint && activeSprint.status === "active" && items.length > 0 && (
+        <div className="p-3 rounded-lg bg-status-success/10 border border-status-success/30 flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-2.5">
+            <CheckCircle className="w-4 h-4 text-status-success flex-shrink-0" />
+            <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
+              <strong>{activeSprint.name}</strong> sedang berlangsung • {items.filter(i => i.sprint_id === activeSprint.id && i.status === "done").length} dari {items.filter(i => i.sprint_id === activeSprint.id).length} Stories selesai
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setReviewNotes("");
+              setRetroResult(null);
+              setIsRetroModalOpen(true);
+            }}
+            leftIcon={<Award className="w-3.5 h-3.5 text-accent" />}
+          >
+            Review & Selesaikan Sprint (Retro)
+          </Button>
+        </div>
+      )}
 
       {/* Planning Phase Informational Banner */}
       {project?.status === "planning" && (
@@ -1320,11 +1610,20 @@ export default function ScrumBoardPage({
                             : "border-borderBase-light dark:border-borderBase-dark"
                         }`}
                       >
-                        {/* Card Header: Key, Subtasks count & Priority */}
+                        {/* Card Header: Key, Revision tag, Subtasks count & Priority */}
                         <div className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 shrink-0 cursor-grab" />
                             <span className="font-mono font-semibold text-accent">{item.key}</span>
+                            {item.revision_count && item.revision_count > 0 ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold"
+                                title={`Revisi ke-${item.revision_count}: ${item.revision_notes || ""}`}
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                <span>Rev {item.revision_count}</span>
+                              </span>
+                            ) : null}
                             {item.subtasks && item.subtasks.length > 0 && (
                               <span
                                 className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
@@ -1698,6 +1997,21 @@ export default function ScrumBoardPage({
             ) : (
               /* --- VIEW MODE BODY --- */
               <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
+                {/* Revision Notice Card */}
+                {selectedItem.revision_count && selectedItem.revision_count > 0 ? (
+                  <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                      <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                      <span>Catatan Revisi Terakhir (Revisi #{selectedItem.revision_count}):</span>
+                    </div>
+                    {selectedItem.revision_notes && (
+                      <p className="text-xs text-textPrimary-light dark:text-textPrimary-dark leading-relaxed whitespace-pre-wrap pl-5 font-mono">
+                        {selectedItem.revision_notes}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+
                 {/* Description Card */}
                 {selectedItem.description && (
                   <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
@@ -2245,21 +2559,41 @@ export default function ScrumBoardPage({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleTransition(selectedItem.id, "in_progress")}
-                      leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        setRevisionTargetItem(selectedItem);
+                        setRevisionNotes("");
+                        setRevisionError(null);
+                        setIsRevisionModalOpen(true);
+                      }}
+                      leftIcon={<RotateCcw className="w-3.5 h-3.5 text-amber-500" />}
                     >
-                      Minta Rework
+                      Minta Revisi
                     </Button>
                   )}
                   {selectedItem.status === "done" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleTransition(selectedItem.id, "in_review")}
-                      leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
-                    >
-                      Buka Ulang
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setRevisionTargetItem(selectedItem);
+                          setRevisionNotes("");
+                          setRevisionError(null);
+                          setIsRevisionModalOpen(true);
+                        }}
+                        leftIcon={<RotateCcw className="w-3.5 h-3.5 text-amber-500" />}
+                      >
+                        Minta Revisi
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleTransition(selectedItem.id, "in_review")}
+                        leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                      >
+                        Buka Ulang
+                      </Button>
+                    </>
                   )}
 
                   {/* Forward transitions */}
@@ -3030,7 +3364,7 @@ export default function ScrumBoardPage({
                     Lanjutkan ke Sprint Berikutnya & Alihkan Task Sisa (Rekomendasi)
                   </span>
                   <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                    Task yang belum berstatus 'Done' akan dialihkan otomatis (Rollover) ke Sprint baru tanpa kehilangan riwayat kerja agen.
+                    Task yang belum berstatus &apos;Done&apos; akan dialihkan otomatis (Rollover) ke Sprint baru tanpa kehilangan riwayat kerja agen.
                   </span>
                 </div>
               </label>
@@ -3173,6 +3507,531 @@ export default function ScrumBoardPage({
               >
                 Mulai Sprint Ini →
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. PM Instruction Modal (Dewi Lestari) */}
+      {isPMModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-accent/15 text-accent flex items-center justify-center font-bold">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Instruksi ke PM (Dewi Lestari)
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Technical Product Owner & Scrum Master
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPMModalOpen(false);
+                  setPmResponse(null);
+                  setPmError(null);
+                }}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {pmError && (
+              <div className="p-3 rounded-lg bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{pmError}</span>
+              </div>
+            )}
+
+            {pmResponse ? (
+              <div className="space-y-3.5">
+                <div className="p-3.5 rounded-lg bg-accent/10 border border-accent/30 space-y-2">
+                  <div className="flex items-center gap-2 text-accent font-semibold text-xs">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Konfirmasi dari Dewi Lestari:</span>
+                  </div>
+                  <p className="text-xs text-textPrimary-light dark:text-textPrimary-dark leading-relaxed whitespace-pre-wrap">
+                    {pmResponse}
+                  </p>
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setPmResponse(null);
+                      setIsPMModalOpen(false);
+                    }}
+                  >
+                    Tutup & Lihat di Board
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3.5 text-xs">
+                <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                  Cukup ketik instruksi fitur atau task tambahan yang Anda inginkan. Dewi akan otomatis membedahnya menjadi User Story terstruktur, menentukan kriteria penerimaan, estimasi poin, dan menugaskannya ke agen terbaik.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                    Instruksi Anda:
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={pmInstruction}
+                    onChange={(e) => setPmInstruction(e.target.value)}
+                    placeholder="Contoh: Tolong tambahkan toggle Dark/Light mode di header dan simpan preferensi tema ke localStorage..."
+                    className="w-full p-3 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs leading-relaxed"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                    Contoh Cepat (Klik untuk memilih):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "Tolong tambahkan toggle Dark/Light mode di header navigasi",
+                      "Buatkan form kontak interaktif dengan validasi input email & pesan",
+                      "Optimasi OpenGraph meta tags dan SEO performance score",
+                      "Tambahkan tombol floating WhatsApp dengan pesan pembuka otomatis",
+                    ].map((example, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setPmInstruction(example)}
+                        className="text-[11px] px-2.5 py-1 rounded-full bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent hover:text-accent transition-colors text-left"
+                      >
+                        + {example}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsPMModalOpen(false)}
+                    disabled={pmSubmitting}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleInstructPM}
+                    isLoading={pmSubmitting}
+                    disabled={!pmInstruction.trim()}
+                    leftIcon={<Send className="w-3.5 h-3.5" />}
+                  >
+                    Kirim ke Dewi Lestari →
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Sprint Start Approval Modal */}
+      {isSprintApprovalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-status-warning/15 text-status-warning flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Persetujuan Memulai Sprint
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Human-in-the-Loop Sprint Kickoff Gate
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSprintApprovalOpen(false)}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {(() => {
+              const targetSprint = pendingSprint || activeSprint || sprints[0];
+              const sprintItems = items.filter((i) => i.sprint_id === targetSprint?.id);
+              const totalPoints = sprintItems.reduce((acc, curr) => acc + (curr.estimate_points || 0), 0);
+
+              return (
+                <div className="space-y-4 text-xs">
+                  {/* Sprint Meta Card */}
+                  <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-textPrimary-light dark:text-textPrimary-dark">
+                        {targetSprint?.name || "Sprint 1"}
+                      </span>
+                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
+                        {totalPoints} Story Points
+                      </span>
+                    </div>
+                    <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                      <strong>Sprint Goal:</strong> {targetSprint?.goal || "Eksekusi backlog fase 1"}
+                    </p>
+                  </div>
+
+                  {/* 5-Point Quality & Readiness Checklist */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                      Kriteria Kesiapan Sprint (Sprint Readiness Checklist):
+                    </span>
+                    <div className="space-y-1.5 p-3 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark">
+                      {[
+                        { title: "Sprint Goal Selaras", desc: "Sasaran sprint disetujui dan memecah tujuan project secara terukur." },
+                        { title: "User Stories & Kriteria Terdefinisi", desc: `${sprintItems.length} stories telah dilengkapi Acceptance Criteria & DoD.` },
+                        { title: "Beban Kapasitas Sesuai", desc: `Total ${totalPoints} SP berada di dalam batas velocity tim agen.` },
+                        { title: "Penugasan Agen Otomatis", desc: "Setiap story telah dialokasikan ke agen dengan kapabilitas yang sesuai." },
+                        { title: "Workspace Git Terisolasi", desc: "Eksekusi akan berjalan dalam Git worktree aman tanpa intervensi manual." },
+                      ].map((chk, idx) => (
+                        <div key={idx} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
+                          <CheckCircle2 className="w-4 h-4 text-status-success shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold">{chk.title}</span>
+                            <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">{chk.desc}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Stories Preview */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark block">
+                      Stories dalam Sprint Ini ({sprintItems.length}):
+                    </span>
+                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                      {sprintItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-[11px]"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-mono text-accent font-semibold">{item.key}</span>
+                            <span className="truncate">{item.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-textMuted-light dark:text-textMuted-dark">{item.assignee_name || "Unassigned"}</span>
+                            <span className="font-mono font-semibold">{item.estimate_points} SP</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsSprintApprovalOpen(false)}
+                      disabled={approvingSprint}
+                    >
+                      Batal
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => targetSprint && handleApproveStartSprint(targetSprint.id)}
+                      isLoading={approvingSprint}
+                      leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                    >
+                      Setujui & Mulai Sprint Ini →
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Sprint Review & Retro Modal */}
+      {isRetroModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-accent/15 text-accent flex items-center justify-center font-bold">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Sprint Review & Retrospective
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Evaluasi Scrum & Kesiapan Sprint Berikutnya
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRetroModalOpen(false)}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {retroResult ? (
+              /* Retrospective Result View */
+              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                <div className="p-3 rounded-lg bg-status-success/10 border border-status-success/30 flex items-center gap-2 text-status-success">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold">{retroResult.message}</span>
+                </div>
+
+                {retroResult.retrospective && (
+                  <div className="space-y-3">
+                    {/* What Went Well */}
+                    <div className="p-3.5 rounded-lg border border-status-success/30 bg-status-success/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-status-success">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Pencapaian Positif (What Went Well):</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.went_well?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Bottlenecks */}
+                    <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Kendala & Bottlenecks:</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.bottlenecks?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Action Items */}
+                    <div className="p-3.5 rounded-lg border border-accent/30 bg-accent/5 space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-accent">
+                        <Sparkles className="w-4 h-4" />
+                        <span>Rekomendasi Tindakan untuk Sprint Berikutnya:</span>
+                      </div>
+                      <ul className="space-y-1 pl-5 list-disc text-textPrimary-light dark:text-textPrimary-dark">
+                        {retroResult.retrospective.action_items?.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setIsRetroModalOpen(false);
+                      setRetroResult(null);
+                    }}
+                  >
+                    Tutup & Lanjut ke Board
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* Review Form View */
+              <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+                {(() => {
+                  const targetSprint = activeSprint || sprints[0];
+                  const sprintItems = items.filter((i) => i.sprint_id === targetSprint?.id);
+                  const doneItems = sprintItems.filter((i) => i.status === "done");
+                  const remainingItems = sprintItems.filter((i) => i.status !== "done");
+
+                  return (
+                    <>
+                      {/* Sprint Delivery Summary */}
+                      <div className="p-3.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark grid grid-cols-2 gap-3 text-center">
+                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
+                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
+                            Stories Selesai (Done)
+                          </span>
+                          <span className="text-xl font-bold font-mono text-status-success">
+                            {doneItems.length} / {sprintItems.length}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark">
+                          <span className="text-[10px] uppercase font-bold text-textMuted-light dark:text-textMuted-dark block">
+                            Stories Belum Selesai
+                          </span>
+                          <span className="text-xl font-bold font-mono text-textMuted-light dark:text-textMuted-dark">
+                            {remainingItems.length}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Info Notice */}
+                      <div className="p-3 rounded-lg border border-accent/20 bg-accent/5 dark:bg-accent/10 space-y-1 text-textPrimary-light dark:text-textPrimary-dark">
+                        <p className="font-semibold flex items-center gap-1.5 text-accent">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Evaluasi Otomatis oleh Dewi Lestari</span>
+                        </p>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                          Saat Anda menyelesaikan sprint ini, Dewi Lestari akan mengagregasi performa agen, menghasilkan catatan Retrospective (Went Well, Bottlenecks, Action Items), dan memajukan Sprint berikutnya ke status <strong>Pending Approval</strong> untuk ditinjau.
+                        </p>
+                      </div>
+
+                      {/* Review Notes Input */}
+                      <div className="space-y-1.5">
+                        <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                          Catatan Evaluasi / Feedback Anda (Opsional):
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={reviewNotes}
+                          onChange={(e) => setReviewNotes(e.target.value)}
+                          placeholder="Contoh: Implementasi arsitektur sudah bagus, pada sprint berikutnya fokus ke styling CSS responsif dan interaktivitas..."
+                          className="w-full p-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
+                        />
+                      </div>
+
+                      {/* Modal Actions */}
+                      <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsRetroModalOpen(false)}
+                          disabled={retroSubmitting}
+                        >
+                          Batal
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => targetSprint && handleCompleteReviewSprint(targetSprint.id)}
+                          isLoading={retroSubmitting}
+                          leftIcon={<Award className="w-3.5 h-3.5" />}
+                        >
+                          Selesaikan Sprint & Jalankan Retro →
+                        </Button>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Revision Request Modal */}
+      {isRevisionModalOpen && revisionTargetItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Minta Revisi Hasil Kerja
+                  </h3>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Revisi ke-{(revisionTargetItem.revision_count || 0) + 1} • {revisionTargetItem.key}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRevisionModalOpen(false);
+                  setRevisionTargetItem(null);
+                  setRevisionError(null);
+                }}
+                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {revisionError && (
+              <div className="p-2.5 rounded-lg bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{revisionError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3.5 text-xs">
+              <div className="p-3 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-1">
+                <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark block truncate">
+                  {revisionTargetItem.title}
+                </span>
+                <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark block">
+                  Agen: <strong>{revisionTargetItem.assignee_name || "Belum Ditugaskan"}</strong>
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold block text-textPrimary-light dark:text-textPrimary-dark">
+                  Catatan Perbaikan / Revisi *
+                </label>
+                <textarea
+                  rows={4}
+                  value={revisionNotes}
+                  onChange={(e) => setRevisionNotes(e.target.value)}
+                  placeholder="Jelaskan secara spesifik apa yang perlu diperbaiki (contoh: tombol kirim masih belum memiliki animasi loading, atau styling font terlalu kecil pada mobile)..."
+                  className="w-full p-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded-md text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs leading-relaxed"
+                  autoFocus
+                />
+              </div>
+
+              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                Task ini akan langsung dipindahkan kembali ke status <strong>In Progress</strong> dan instruksi revisi Anda akan tersimpan di riwayat task.
+              </p>
+
+              <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsRevisionModalOpen(false);
+                    setRevisionTargetItem(null);
+                  }}
+                  disabled={revisionSubmitting}
+                >
+                  Batal
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleRequestRevision}
+                  isLoading={revisionSubmitting}
+                  disabled={!revisionNotes.trim()}
+                  leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+                >
+                  Kirim Revisi ke Agen →
+                </Button>
+              </div>
             </div>
           </div>
         </div>

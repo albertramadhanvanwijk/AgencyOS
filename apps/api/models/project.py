@@ -43,5 +43,11 @@ class Sprint(Base):
     capacity_points = Column(Integer, default=20)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # Scrum Evaluation & Retrospective
+    retrospective = Column(JSON, nullable=True) # {"went_well": [...], "bottlenecks": [...], "action_items": [...]}
+    review_notes = Column(Text, nullable=True)
+    approved_by = Column(String(128), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
     project = relationship("Project", back_populates="sprints")
     work_items = relationship("WorkItem", back_populates="sprint")

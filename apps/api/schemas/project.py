@@ -8,9 +8,15 @@ class ProjectBase(BaseModel):
     goal: Optional[str] = None
     status: str = Field(default="active")
     workspace_path: Optional[str] = None
+    github_repo_url: Optional[str] = None
+    github_repo_name: Optional[str] = None
+    github_repo_mode: Optional[str] = "local" # auto_create, existing, local
+    github_branch: Optional[str] = "main"
 
 class ProjectCreate(ProjectBase):
-    pass
+    github_token: Optional[str] = None
+    create_ci_workflow: Optional[bool] = True
+    is_private_repo: Optional[bool] = True
 
 class ProjectOut(ProjectBase):
     id: str

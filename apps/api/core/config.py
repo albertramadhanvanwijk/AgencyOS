@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     LIVE_ENGINE_MODEL: str = Field(default="gemini-2.0-flash")
     DEFAULT_ENGINE_ADAPTER: str = Field(default="MockEngineAdapter")
 
+    # GitHub Integration
+    GITHUB_TOKEN: str | None = Field(default=None)
+    GITHUB_DEFAULT_VISIBILITY: str = Field(default="private")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

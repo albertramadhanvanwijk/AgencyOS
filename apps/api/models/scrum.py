@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Integer, Float, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from apps.api.core.database import Base
 
 def generate_uuid():
@@ -13,6 +13,7 @@ class WorkItem(Base):
     id = Column(String(64), primary_key=True, default=generate_uuid)
     project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     sprint_id = Column(String(64), ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True)
+    parent_id = Column(String(64), ForeignKey("work_items.id", ondelete="CASCADE"), nullable=True)
     key = Column(String(32), nullable=False, unique=True) # e.g. "PRJ-CORE-1"
     
     type = Column(String(32), default="task") # epic, story, task, subtask, bug
@@ -30,6 +31,12 @@ class WorkItem(Base):
     
     assignee_agent_id = Column(String(64), ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True)
     blocker_reason = Column(Text, nullable=True)
+
+    # Git & Development tracking
+    git_branch = Column(String(128), nullable=True) # e.g. "agencyos/PRJ-CORE-1-auth"
+    pull_request_url = Column(String(256), nullable=True) # e.g. "https://github.com/user/repo/pull/1"
+    pull_request_number = Column(Integer, nullable=True)
+    pull_request_status = Column(String(32), default="draft") # draft, open, merged, closed
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -37,6 +44,7 @@ class WorkItem(Base):
     project = relationship("Project", back_populates="work_items")
     sprint = relationship("Sprint", back_populates="work_items")
     assignee = relationship("AIAgent")
+    subtasks = relationship("WorkItem", backref=backref("parent", remote_side=[id]), cascade="all, delete-orphan")
 
 class WorkItemDependency(Base):
     __tablename__ = "work_item_dependencies"

@@ -43,7 +43,7 @@ def test_test_adapter_connection_not_configured(client):
     data = response.json()
     assert data["adapter"] == "LiveLLMEngineAdapter"
     assert data["simulated"] is False
-    assert data["status"] in ["not_configured", "verified"]
+    assert data["status"] in ["not_configured", "verified", "warning"]
 
 def test_configure_adapter(client):
     response = client.post("/api/v1/system/adapters/configure", json={

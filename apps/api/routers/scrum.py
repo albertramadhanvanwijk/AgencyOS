@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models import WorkItem, Project, AIAgent, AuditEvent
-from apps.api.schemas.scrum import WorkItemUpdate, WorkItemOut
+from apps.api.schemas.scrum import WorkItemUpdate, WorkItemOut, WorkItemSubtaskOut, WorkItemCreate
 from apps.api.schemas.scheduler import AgentRecommendationOut, AssignAgentRequest
 from apps.api.services.scheduler import scheduler_service
 
@@ -12,18 +12,27 @@ router = APIRouter(prefix="/work-items", tags=["Scrum & Work Items"])
 
 VALID_STATUSES = {"backlog", "ready", "in_progress", "in_review", "done", "blocked", "cancelled"}
 
-@router.get("/{item_id}", response_model=WorkItemOut)
-def get_work_item(item_id: str, db: Session = Depends(get_db)):
-    item = db.query(WorkItem).filter(
-        (WorkItem.id == item_id) | (WorkItem.key == item_id.upper())
-    ).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Work item not found")
+def _build_work_item_out(item: WorkItem) -> WorkItemOut:
+    subtasks_out = []
+    if hasattr(item, "subtasks") and item.subtasks:
+        for st in item.subtasks:
+            subtasks_out.append(WorkItemSubtaskOut(
+                id=st.id,
+                key=st.key,
+                title=st.title,
+                type=st.type or "subtask",
+                status=st.status,
+                priority=st.priority,
+                estimate_points=st.estimate_points or 1.0,
+                assignee_agent_id=st.assignee_agent_id,
+                assignee_name=st.assignee.name if st.assignee else None,
+            ))
 
     return WorkItemOut(
         id=item.id,
         project_id=item.project_id,
         sprint_id=item.sprint_id,
+        parent_id=item.parent_id,
         key=item.key,
         type=item.type,
         title=item.title,
@@ -35,11 +44,26 @@ def get_work_item(item_id: str, db: Session = Depends(get_db)):
         definition_of_done=item.definition_of_done or [],
         assignee_agent_id=item.assignee_agent_id,
         blocker_reason=item.blocker_reason,
+        git_branch=item.git_branch,
+        pull_request_url=item.pull_request_url,
+        pull_request_number=item.pull_request_number,
+        pull_request_status=item.pull_request_status or "draft",
         created_at=item.created_at,
         updated_at=item.updated_at,
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=item.project.name if item.project else None,
+        subtasks=subtasks_out,
     )
+
+@router.get("/{item_id}", response_model=WorkItemOut)
+def get_work_item(item_id: str, db: Session = Depends(get_db)):
+    item = db.query(WorkItem).filter(
+        (WorkItem.id == item_id) | (WorkItem.key == item_id.upper())
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found")
+
+    return _build_work_item_out(item)
 
 @router.patch("/{item_id}", response_model=WorkItemOut)
 def update_work_item(
@@ -123,6 +147,16 @@ def update_work_item(
         item.sprint_id = clean_sprint
     if "blocker_reason" in update_in.model_fields_set:
         item.blocker_reason = update_in.blocker_reason
+    if update_in.parent_id is not None:
+        item.parent_id = update_in.parent_id.strip() if update_in.parent_id.strip() else None
+    if update_in.git_branch is not None:
+        item.git_branch = update_in.git_branch.strip() if update_in.git_branch.strip() else None
+    if update_in.pull_request_url is not None:
+        item.pull_request_url = update_in.pull_request_url.strip() if update_in.pull_request_url.strip() else None
+    if update_in.pull_request_number is not None:
+        item.pull_request_number = update_in.pull_request_number
+    if update_in.pull_request_status is not None:
+        item.pull_request_status = update_in.pull_request_status
 
     # Audit event on status change
     if update_in.status is not None and update_in.status != previous_status:
@@ -155,26 +189,7 @@ def update_work_item(
     db.commit()
     db.refresh(item)
 
-    return WorkItemOut(
-        id=item.id,
-        project_id=item.project_id,
-        sprint_id=item.sprint_id,
-        key=item.key,
-        type=item.type,
-        title=item.title,
-        description=item.description,
-        status=item.status,
-        priority=item.priority,
-        estimate_points=item.estimate_points,
-        acceptance_criteria=item.acceptance_criteria or [],
-        definition_of_done=item.definition_of_done or [],
-        assignee_agent_id=item.assignee_agent_id,
-        blocker_reason=item.blocker_reason,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-        assignee_name=item.assignee.name if item.assignee else None,
-        project_name=item.project.name if item.project else None,
-    )
+    return _build_work_item_out(item)
 
 class WorkItemApprovalIn(BaseModel):
     decision: str  # "approve" or "rework"
@@ -233,27 +248,60 @@ def approve_work_item(
     db.commit()
     db.refresh(item)
 
-    return WorkItemOut(
-        id=item.id,
-        project_id=item.project_id,
-        sprint_id=item.sprint_id,
-        key=item.key,
-        type=item.type,
-        title=item.title,
-        description=item.description,
-        status=item.status,
-        priority=item.priority,
-        estimate_points=item.estimate_points,
-        acceptance_criteria=item.acceptance_criteria or [],
-        definition_of_done=item.definition_of_done or [],
-        assignee_agent_id=item.assignee_agent_id,
-        blocker_reason=item.blocker_reason,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-        assignee_name=item.assignee.name if item.assignee else None,
-        project_name=item.project.name if item.project else None,
-    )
+    return _build_work_item_out(item)
 
+class SubtaskCreateIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: Optional[str] = "medium"
+    estimate_points: Optional[float] = 0.5
+    assignee_agent_id: Optional[str] = None
+
+@router.post("/{item_id}/subtasks", response_model=WorkItemOut, status_code=status.HTTP_201_CREATED)
+def create_subtask(
+    item_id: str,
+    subtask_in: SubtaskCreateIn,
+    db: Session = Depends(get_db)
+):
+    parent = db.query(WorkItem).filter(
+        (WorkItem.id == item_id) | (WorkItem.key == item_id.upper())
+    ).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent work item not found")
+
+    project = parent.project
+    project.item_counter += 1
+    subtask_key = f"{parent.key}-S{len(parent.subtasks) + 1}"
+
+    # Clean & validate assignee
+    assignee_id = subtask_in.assignee_agent_id.strip() if subtask_in.assignee_agent_id and subtask_in.assignee_agent_id.strip() else None
+    if assignee_id:
+        agent_exists = db.query(AIAgent).filter(AIAgent.id == assignee_id).first()
+        if not agent_exists:
+            assignee_id = None
+
+    subtask = WorkItem(
+        project_id=parent.project_id,
+        sprint_id=parent.sprint_id,
+        parent_id=parent.id,
+        key=subtask_key,
+        type="subtask",
+        title=subtask_in.title.strip(),
+        description=subtask_in.description.strip() if subtask_in.description and subtask_in.description.strip() else None,
+        status="backlog",
+        priority=subtask_in.priority or "medium",
+        estimate_points=subtask_in.estimate_points or 0.5,
+        acceptance_criteria=["Subtask functional verified"],
+        definition_of_done=["Subtask verified against parent criteria"],
+        assignee_agent_id=assignee_id,
+        git_branch=f"agencyos/{project.key.lower()}/{subtask_key.lower()}",
+        pull_request_status="draft"
+    )
+    db.add(subtask)
+    db.commit()
+    db.refresh(subtask)
+
+    return _build_work_item_out(subtask)
 
 @router.get("/{item_id}/recommend-assignees", response_model=List[AgentRecommendationOut])
 def get_recommended_assignees(item_id: str, db: Session = Depends(get_db)):

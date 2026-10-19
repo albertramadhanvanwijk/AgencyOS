@@ -18,6 +18,13 @@ class Project(Base):
     workspace_path = Column(String(256), nullable=False) # e.g. "workspaces/prj-core"
     
     item_counter = Column(Integer, default=0) # Auto-incrementing counter for work item keys
+    
+    # GitHub Integration
+    github_repo_url = Column(String(256), nullable=True) # e.g. "https://github.com/user/repo"
+    github_repo_name = Column(String(128), nullable=True) # e.g. "user/repo"
+    github_repo_mode = Column(String(32), default="local") # "auto_create", "existing", "local"
+    github_branch = Column(String(64), default="main")
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     sprints = relationship("Sprint", back_populates="project", cascade="all, delete-orphan")

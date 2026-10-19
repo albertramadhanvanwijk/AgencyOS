@@ -8,13 +8,28 @@ from apps.api.core.database import get_db
 from apps.api.core.config import settings
 from apps.api.models import Project, Sprint, WorkItem, AuditEvent, AIAgent
 from apps.api.schemas.project import ProjectCreate, ProjectOut, SprintCreate, SprintOut
-from apps.api.schemas.scrum import WorkItemCreate, WorkItemOut
+from apps.api.schemas.scrum import WorkItemCreate, WorkItemOut, WorkItemSubtaskOut
 from apps.api.schemas.scheduler import SprintCapacityOut
 from apps.api.schemas.analytics import SprintBurndownOut, ProjectVelocityOut
 from apps.api.services.scheduler import scheduler_service
 from apps.api.services.analytics import analytics_service
 
+from apps.api.services.github_service import github_service
+
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
+
+@router.get("/integrations/github/status")
+def get_github_status(token: Optional[str] = Query(None)):
+    user = github_service.get_authenticated_user(token)
+    if not user:
+        return {"authenticated": False, "username": None}
+    return {
+        "authenticated": True,
+        "username": user.get("login"),
+        "name": user.get("name"),
+        "avatar_url": user.get("avatar_url"),
+        "html_url": user.get("html_url"),
+    }
 
 @router.get("", response_model=List[ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
@@ -33,6 +48,10 @@ def list_projects(db: Session = Depends(get_db)):
             status=p.status,
             workspace_path=p.workspace_path,
             item_counter=p.item_counter,
+            github_repo_url=p.github_repo_url,
+            github_repo_name=p.github_repo_name,
+            github_repo_mode=p.github_repo_mode,
+            github_branch=p.github_branch or "main",
             created_at=p.created_at,
             active_sprint_name=active_sprint,
             total_items=total_items,
@@ -58,12 +77,53 @@ def create_project(proj_in: ProjectCreate, db: Session = Depends(get_db)):
     workspace_full = os.path.join(settings.WORKSPACE_ROOT, key_clean.lower())
     os.makedirs(workspace_full, exist_ok=True)
 
+    repo_url = proj_in.github_repo_url
+    repo_name = proj_in.github_repo_name
+    repo_mode = proj_in.github_repo_mode or "local"
+    repo_branch = proj_in.github_branch or "main"
+
+    # Handle GitHub repository creation / connection
+    if repo_mode == "auto_create":
+        # Format a clean repo name if not provided
+        sanitized_name = proj_in.name.strip().lower().replace(" ", "-")
+        target_repo_name = repo_name or f"{key_clean.lower()}-{sanitized_name}"
+        try:
+            gh_repo = github_service.create_repository(
+                name=target_repo_name,
+                private=proj_in.is_private_repo if proj_in.is_private_repo is not None else True,
+                description=proj_in.goal or f"{proj_in.name} - Managed by AgencyOS",
+                token=proj_in.github_token
+            )
+            repo_url = gh_repo.get("html_url")
+            repo_name = gh_repo.get("full_name")
+        except Exception as e:
+            # If auto-create fails, raise friendly error to user
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Gagal membuat repositori GitHub otomatis: {str(e)}"
+            )
+
+    # Initialize local git repository (and push to remote if url is set)
+    github_service.init_local_git_repo(
+        workspace_full_path=workspace_full,
+        remote_url=repo_url,
+        branch=repo_branch,
+        create_ci=bool(proj_in.create_ci_workflow),
+        project_name=proj_in.name.strip(),
+        project_key=key_clean,
+        token=proj_in.github_token
+    )
+
     proj = Project(
         name=proj_in.name.strip(),
         key=key_clean,
         goal=proj_in.goal,
         status=proj_in.status,
         workspace_path=workspace_rel,
+        github_repo_url=repo_url,
+        github_repo_name=repo_name,
+        github_repo_mode=repo_mode,
+        github_branch=repo_branch,
         item_counter=0,
     )
     db.add(proj)
@@ -87,7 +147,13 @@ def create_project(proj_in: ProjectCreate, db: Session = Depends(get_db)):
         target_id=proj.id,
         project_id=proj.id,
         policy_basis="PROJECT_CREATION_POLICY",
-        details={"name": proj.name, "key": proj.key, "workspace": workspace_rel}
+        details={
+            "name": proj.name,
+            "key": proj.key,
+            "workspace": workspace_rel,
+            "github_repo_url": repo_url,
+            "github_repo_mode": repo_mode
+        }
     ))
 
     db.commit()
@@ -100,6 +166,10 @@ def create_project(proj_in: ProjectCreate, db: Session = Depends(get_db)):
         goal=proj.goal,
         status=proj.status,
         workspace_path=proj.workspace_path,
+        github_repo_url=proj.github_repo_url,
+        github_repo_name=proj.github_repo_name,
+        github_repo_mode=proj.github_repo_mode,
+        github_branch=proj.github_branch,
         item_counter=0,
         created_at=proj.created_at,
         active_sprint_name=sprint.name,
@@ -126,6 +196,10 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         goal=p.goal,
         status=p.status,
         workspace_path=p.workspace_path,
+        github_repo_url=p.github_repo_url,
+        github_repo_name=p.github_repo_name,
+        github_repo_mode=p.github_repo_mode,
+        github_branch=p.github_branch or "main",
         item_counter=p.item_counter,
         created_at=p.created_at,
         active_sprint_name=active_sprint,
@@ -249,6 +323,49 @@ def create_project_sprint(
         items_count=rollover_count
     )
 
+def _build_work_item_out(item: WorkItem, project_name: Optional[str] = None) -> WorkItemOut:
+    subtasks_out = []
+    if hasattr(item, "subtasks") and item.subtasks:
+        for st in item.subtasks:
+            subtasks_out.append(WorkItemSubtaskOut(
+                id=st.id,
+                key=st.key,
+                title=st.title,
+                type=st.type or "subtask",
+                status=st.status,
+                priority=st.priority,
+                estimate_points=st.estimate_points or 1.0,
+                assignee_agent_id=st.assignee_agent_id,
+                assignee_name=st.assignee.name if st.assignee else None,
+            ))
+
+    return WorkItemOut(
+        id=item.id,
+        project_id=item.project_id,
+        sprint_id=item.sprint_id,
+        parent_id=item.parent_id,
+        key=item.key,
+        type=item.type,
+        title=item.title,
+        description=item.description,
+        status=item.status,
+        priority=item.priority,
+        estimate_points=item.estimate_points,
+        acceptance_criteria=item.acceptance_criteria or [],
+        definition_of_done=item.definition_of_done or [],
+        assignee_agent_id=item.assignee_agent_id,
+        blocker_reason=item.blocker_reason,
+        git_branch=item.git_branch,
+        pull_request_url=item.pull_request_url,
+        pull_request_number=item.pull_request_number,
+        pull_request_status=item.pull_request_status or "draft",
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        assignee_name=item.assignee.name if item.assignee else None,
+        project_name=project_name or (item.project.name if item.project else None),
+        subtasks=subtasks_out,
+    )
+
 @router.get("/{project_id}/work-items", response_model=List[WorkItemOut])
 def list_project_work_items(
     project_id: str,
@@ -275,28 +392,7 @@ def list_project_work_items(
         query = query.filter(WorkItem.priority == priority_filter)
 
     items = query.all()
-    results = []
-    for item in items:
-        results.append(WorkItemOut(
-            id=item.id,
-            project_id=item.project_id,
-            sprint_id=item.sprint_id,
-            key=item.key,
-            type=item.type,
-            title=item.title,
-            description=item.description,
-            status=item.status,
-            priority=item.priority,
-            estimate_points=item.estimate_points,
-            acceptance_criteria=item.acceptance_criteria or [],
-            definition_of_done=item.definition_of_done or [],
-            assignee_agent_id=item.assignee_agent_id,
-            blocker_reason=item.blocker_reason,
-            created_at=item.created_at,
-            updated_at=item.updated_at,
-            assignee_name=item.assignee.name if item.assignee else None,
-            project_name=p.name,
-        ))
+    results = [_build_work_item_out(item, p.name) for item in items]
     return results
 
 @router.post("/{project_id}/work-items", response_model=WorkItemOut, status_code=status.HTTP_201_CREATED)
@@ -332,11 +428,23 @@ def create_project_work_item(
         if not agent_exists:
             assignee_id = None
 
+    # Clean parent_id if provided
+    parent_id = item_in.parent_id.strip() if item_in.parent_id and item_in.parent_id.strip() else None
+    if parent_id:
+        parent_exists = db.query(WorkItem).filter(WorkItem.id == parent_id).first()
+        if not parent_exists:
+            parent_id = None
+
+    # Determine type and git branch
+    item_type = item_in.type or ("subtask" if parent_id else "task")
+    git_branch_name = f"agencyos/{p.key.lower()}/{generated_key.lower()}"
+
     item = WorkItem(
         project_id=p.id,
         sprint_id=sprint_id,
+        parent_id=parent_id,
         key=generated_key,
-        type=item_in.type or "task",
+        type=item_type,
         title=item_in.title.strip(),
         description=item_in.description.strip() if item_in.description and item_in.description.strip() else None,
         status="backlog", # Always start in backlog
@@ -345,6 +453,8 @@ def create_project_work_item(
         acceptance_criteria=item_in.acceptance_criteria or [],
         definition_of_done=item_in.definition_of_done or ["Code merged", "Passing tests", "Audit review recorded"],
         assignee_agent_id=assignee_id,
+        git_branch=git_branch_name,
+        pull_request_status="draft",
     )
     db.add(item)
     db.flush()
@@ -357,32 +467,13 @@ def create_project_work_item(
         target_id=item.id,
         project_id=p.id,
         policy_basis="SCRUM_WORK_ITEM_CREATION_POLICY",
-        details={"key": generated_key, "title": item.title, "type": item.type}
+        details={"key": generated_key, "title": item.title, "type": item.type, "git_branch": git_branch_name}
     ))
 
     db.commit()
     db.refresh(item)
 
-    return WorkItemOut(
-        id=item.id,
-        project_id=item.project_id,
-        sprint_id=item.sprint_id,
-        key=item.key,
-        type=item.type,
-        title=item.title,
-        description=item.description,
-        status=item.status,
-        priority=item.priority,
-        estimate_points=item.estimate_points,
-        acceptance_criteria=item.acceptance_criteria or [],
-        definition_of_done=item.definition_of_done or [],
-        assignee_agent_id=item.assignee_agent_id,
-        blocker_reason=item.blocker_reason,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-        assignee_name=item.assignee.name if item.assignee else None,
-        project_name=p.name,
-    )
+    return _build_work_item_out(item, p.name)
 
 
 @router.get("/{project_id}/sprint-capacity", response_model=SprintCapacityOut)

@@ -18,6 +18,12 @@ import {
   Target,
   Layers,
   CheckCircle2,
+  Github,
+  ExternalLink,
+  Lock,
+  Globe,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 
 interface Project {
@@ -28,6 +34,10 @@ interface Project {
   status: string;
   workspace_path: string;
   item_counter: number;
+  github_repo_url?: string;
+  github_repo_name?: string;
+  github_repo_mode?: string;
+  github_branch?: string;
   active_sprint_name?: string;
   total_items: number;
   done_items: number;
@@ -38,6 +48,13 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // GitHub Integration State
+  const [githubStatus, setGithubStatus] = useState<{
+    authenticated: boolean;
+    username?: string;
+    avatar_url?: string;
+  } | null>(null);
+
   // Create Project Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +62,28 @@ export default function ProjectsPage() {
   const [projectName, setProjectName] = useState("");
   const [projectKey, setProjectKey] = useState("");
   const [projectGoal, setProjectGoal] = useState("");
+
+  // GitHub repo options
+  const [repoMode, setRepoMode] = useState<"auto_create" | "existing" | "local">("auto_create");
+  const [customRepoName, setCustomRepoName] = useState("");
+  const [existingRepoUrl, setExistingRepoUrl] = useState("");
+  const [isPrivateRepo, setIsPrivateRepo] = useState(true);
+  const [createCiWorkflow, setCreateCiWorkflow] = useState(true);
+
+  const fetchGithubStatus = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/v1/projects/integrations/github/status");
+      if (res.ok) {
+        const data = await res.json();
+        setGithubStatus(data);
+        if (!data.authenticated) {
+          setRepoMode("local");
+        }
+      }
+    } catch {
+      setRepoMode("local");
+    }
+  };
 
   const fetchProjects = async () => {
     try {
@@ -67,6 +106,7 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     fetchProjects();
+    fetchGithubStatus();
   }, []);
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -76,12 +116,22 @@ export default function ProjectsPage() {
     try {
       setSubmitting(true);
       setModalError(null);
-      const payload = {
+      const payload: Record<string, any> = {
         name: projectName.trim(),
         key: projectKey.trim().toUpperCase(),
         goal: projectGoal.trim() || undefined,
         status: "active",
+        github_repo_mode: repoMode,
       };
+
+      if (repoMode === "auto_create") {
+        if (customRepoName.trim()) payload.github_repo_name = customRepoName.trim();
+        payload.is_private_repo = isPrivateRepo;
+        payload.create_ci_workflow = createCiWorkflow;
+      } else if (repoMode === "existing") {
+        payload.github_repo_url = existingRepoUrl.trim();
+        payload.github_repo_name = customRepoName.trim() || existingRepoUrl.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+      }
 
       const res = await fetch("http://127.0.0.1:8000/api/v1/projects", {
         method: "POST",
@@ -98,6 +148,8 @@ export default function ProjectsPage() {
       setProjectName("");
       setProjectKey("");
       setProjectGoal("");
+      setCustomRepoName("");
+      setExistingRepoUrl("");
       await fetchProjects();
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -152,7 +204,7 @@ export default function ProjectsPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                       <span className="font-mono text-xs px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-semibold text-accent">
                         {proj.key}
                       </span>
@@ -160,6 +212,21 @@ export default function ProjectsPage() {
                         variant={proj.status === "active" ? "success" : "neutral"}
                         label={proj.active_sprint_name || "Planning"}
                       />
+                      {proj.github_repo_url && (
+                        <a
+                          href={proj.github_repo_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-[11px] font-mono text-textPrimary-light dark:text-textPrimary-dark hover:text-accent hover:border-accent transition-colors"
+                          title="Buka repository di GitHub"
+                        >
+                          <Github className="w-3 h-3 text-textPrimary-light dark:text-textPrimary-dark" />
+                          <span className="truncate max-w-[130px]">
+                            {proj.github_repo_name || proj.github_repo_url.replace("https://github.com/", "")}
+                          </span>
+                          <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                        </a>
+                      )}
                     </div>
                     <h2 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark">
                       {proj.name}
@@ -206,18 +273,20 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Create Project Modal */}
+      {/* Create Project Modal with GitHub Integration */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <form
             onSubmit={handleCreateProject}
-            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-md w-full p-5 space-y-4 shadow-xl"
+            className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl max-h-[92vh] flex flex-col"
           >
             <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
               <div>
-                <h2 className="text-base font-semibold">Create New Project</h2>
+                <h2 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                  Tambah Project Baru
+                </h2>
                 <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                  Initializes isolated workspace repository and default Sprint 1.
+                  Inisialisasi workspace terisolasi, Git repository, dan Sprint 1.
                 </p>
               </div>
               <button
@@ -230,18 +299,20 @@ export default function ProjectsPage() {
             </div>
 
             {modalError && (
-              <div className="p-2 rounded bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs">
+              <div className="p-2.5 rounded-lg bg-status-danger/10 border border-status-danger/30 text-status-danger text-xs animate-in fade-in">
                 {modalError}
               </div>
             )}
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
               <div>
-                <label className="font-medium block mb-1">Project Name *</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Nama Project *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Customer Portal Redesign"
+                  placeholder="e.g. E-Commerce Customer Portal"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
@@ -249,35 +320,190 @@ export default function ProjectsPage() {
               </div>
 
               <div>
-                <label className="font-medium block mb-1">Project Key (Unique Prefix) *</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Project Key (Prefix Unik) *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. PRJ-PORTAL"
+                  placeholder="e.g. ECOM"
                   value={projectKey}
-                  onChange={(e) => setProjectKey(e.target.value)}
+                  onChange={(e) => setProjectKey(e.target.value.replace(/[^a-zA-Z0-9-]/g, ""))}
                   className="w-full h-8 px-2.5 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent font-mono uppercase"
                 />
               </div>
 
               <div>
-                <label className="font-medium block mb-1">Strategic Mission & Goal</label>
+                <label className="font-semibold block mb-1 text-textPrimary-light dark:text-textPrimary-dark">
+                  Target & Misi Strategis Proyek
+                </label>
                 <textarea
-                  rows={3}
-                  placeholder="Target outcome, tech stack boundary, and delivery objectives..."
+                  rows={2}
+                  placeholder="Tech stack, batasan arsitektur, dan objektif utama tim agen..."
                   value={projectGoal}
                   onChange={(e) => setProjectGoal(e.target.value)}
                   className="w-full p-2 bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent text-xs"
                 />
               </div>
+
+              {/* GitHub Repository Integration Section */}
+              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs flex items-center gap-1.5 text-textPrimary-light dark:text-textPrimary-dark">
+                    <Github className="w-4 h-4" />
+                    <span>Integrasi GitHub Repository</span>
+                  </span>
+                  {githubStatus?.authenticated ? (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-success/15 text-status-success border border-status-success/30 font-semibold flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>@{githubStatus.username}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                      Mode Lokal (Tanpa Token)
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {/* Mode 1: Auto-create Repo */}
+                  <label className={`block p-2.5 rounded-lg border transition-all cursor-pointer text-xs ${
+                    repoMode === "auto_create"
+                      ? "border-accent bg-accent/5 dark:bg-accent/10"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        name="repoMode"
+                        checked={repoMode === "auto_create"}
+                        onChange={() => setRepoMode("auto_create")}
+                        className="mt-0.5 text-accent focus:ring-accent"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                            1. Buat Repository Baru Otomatis di GitHub
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-accent text-white font-medium">Rekomendasi ⭐</span>
+                        </div>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                          AgencyOS akan membuat repo baru di akun GitHub Anda dan melakukan inisialisasi commit pertama.
+                        </p>
+
+                        {repoMode === "auto_create" && (
+                          <div className="pt-2 space-y-2 animate-in fade-in">
+                            <div>
+                              <label className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-0.5">
+                                Nama Repository di GitHub (Opsional)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder={projectKey ? `${projectKey.toLowerCase()}-${(projectName || "app").toLowerCase().replace(/\s+/g, "-")}` : "e.g. ecom-customer-portal"}
+                                value={customRepoName}
+                                onChange={(e) => setCustomRepoName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ""))}
+                                className="w-full h-7 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs font-mono text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                              />
+                            </div>
+                            <div className="flex items-center gap-4 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isPrivateRepo}
+                                  onChange={(e) => setIsPrivateRepo(e.target.checked)}
+                                  className="rounded text-accent focus:ring-accent"
+                                />
+                                <Lock className="w-3 h-3" />
+                                <span>Private Repository</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={createCiWorkflow}
+                                  onChange={(e) => setCreateCiWorkflow(e.target.checked)}
+                                  className="rounded text-accent focus:ring-accent"
+                                />
+                                <Sparkles className="w-3 h-3 text-accent" />
+                                <span>Template CI GitHub Actions</span>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Mode 2: Existing Repo */}
+                  <label className={`block p-2.5 rounded-lg border transition-all cursor-pointer text-xs ${
+                    repoMode === "existing"
+                      ? "border-accent bg-accent/5 dark:bg-accent/10"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        name="repoMode"
+                        checked={repoMode === "existing"}
+                        onChange={() => setRepoMode("existing")}
+                        className="mt-0.5 text-accent focus:ring-accent"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                          2. Hubungkan ke Repository GitHub yang Sudah Ada
+                        </span>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                          Gunakan codebase yang sudah ada di akun GitHub Anda untuk dikembangkan oleh agen.
+                        </p>
+                        {repoMode === "existing" && (
+                          <div className="pt-2 space-y-1.5 animate-in fade-in">
+                            <input
+                              type="text"
+                              required={repoMode === "existing"}
+                              placeholder="https://github.com/username/repository.git"
+                              value={existingRepoUrl}
+                              onChange={(e) => setExistingRepoUrl(e.target.value)}
+                              className="w-full h-7 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs font-mono text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Mode 3: Local Only */}
+                  <label className={`block p-2.5 rounded-lg border transition-all cursor-pointer text-xs ${
+                    repoMode === "local"
+                      ? "border-accent bg-accent/5 dark:bg-accent/10"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="radio"
+                        name="repoMode"
+                        checked={repoMode === "local"}
+                        onChange={() => setRepoMode("local")}
+                        className="mt-0.5 text-accent focus:ring-accent"
+                      />
+                      <div className="flex-1">
+                        <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                          3. Simpan di Lokal Saja (Tanpa GitHub Remote)
+                        </span>
+                        <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark mt-0.5">
+                          Inisialisasi git lokal di disk server untuk uji coba atau pengerjaan offline.
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-end space-x-2">
               <Button type="button" variant="outline" size="sm" onClick={() => setIsModalOpen(false)}>
-                Cancel
+                Batal
               </Button>
               <Button type="submit" size="sm" isLoading={submitting}>
-                Initialize Project Workspace
+                Inisialisasi Project & Workspace
               </Button>
             </div>
           </form>

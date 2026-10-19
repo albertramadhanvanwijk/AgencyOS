@@ -605,6 +605,35 @@ def init_db():
             conn.commit()
     except Exception:
         pass
+    # Project GitHub migrations
+    for col, col_type in [
+        ("github_repo_url", "VARCHAR(256)"),
+        ("github_repo_name", "VARCHAR(128)"),
+        ("github_repo_mode", "VARCHAR(32) DEFAULT 'local'"),
+        ("github_branch", "VARCHAR(64) DEFAULT 'main'"),
+    ]:
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE projects ADD COLUMN {col} {col_type}"))
+                conn.commit()
+        except Exception:
+            pass
+    # WorkItem Subtask & Git migrations
+    for col, col_type in [
+        ("parent_id", "VARCHAR(64)"),
+        ("git_branch", "VARCHAR(128)"),
+        ("pull_request_url", "VARCHAR(256)"),
+        ("pull_request_number", "INTEGER"),
+        ("pull_request_status", "VARCHAR(32) DEFAULT 'draft'"),
+    ]:
+        try:
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE work_items ADD COLUMN {col} {col_type}"))
+                conn.commit()
+        except Exception:
+            pass
 
     db = SessionLocal()
     try:

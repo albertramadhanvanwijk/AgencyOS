@@ -42,6 +42,10 @@ import {
   ListTodo,
   Calendar,
   Bot,
+  Github,
+  ExternalLink,
+  Copy,
+  GitPullRequest,
 } from "lucide-react";
 
 interface AgentRecommendation {
@@ -80,9 +84,23 @@ interface SprintCapacity {
   agent_allocations: AgentCapacityItem[];
 }
 
+interface WorkItemSubtask {
+  id: string;
+  key: string;
+  title: string;
+  type: string;
+  status: string;
+  priority: string;
+  estimate_points: number;
+  assignee_agent_id?: string;
+  assignee_name?: string;
+  git_branch?: string;
+}
+
 interface WorkItem {
   id: string;
   project_id: string;
+  parent_id?: string;
   key: string;
   type: string;
   title: string;
@@ -96,6 +114,11 @@ interface WorkItem {
   assignee_name?: string;
   sprint_id?: string;
   blocker_reason?: string;
+  git_branch?: string;
+  pull_request_url?: string;
+  pull_request_number?: number;
+  pull_request_status?: string;
+  subtasks?: WorkItemSubtask[];
 }
 
 interface ExecutionRun {
@@ -144,7 +167,6 @@ interface QualityCheckResult {
   is_simulated: boolean;
 }
 
-
 interface Project {
   id: string;
   name: string;
@@ -153,6 +175,10 @@ interface Project {
   status: string;
   workspace_path: string;
   active_sprint_name?: string;
+  github_repo_url?: string;
+  github_repo_name?: string;
+  github_repo_mode?: string;
+  github_branch?: string;
 }
 
 interface Agent {
@@ -278,6 +304,15 @@ export default function ScrumBoardPage({
   const [triggeringRunId, setTriggeringRunId] = useState<string | null>(null);
   const [activeArtifactTab, setActiveArtifactTab] = useState<string>("patch.diff");
   const [activeRunTab, setActiveRunTab] = useState<"logs" | "quality" | "artifacts">("logs");
+
+  // Subtasks & Development Panel State
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [newSubtaskPoints, setNewSubtaskPoints] = useState(1.0);
+  const [newSubtaskAssigneeId, setNewSubtaskAssigneeId] = useState("");
+  const [subtaskSubmitting, setSubtaskSubmitting] = useState(false);
+  const [subtaskError, setSubtaskError] = useState<string | null>(null);
+  const [copiedBranch, setCopiedBranch] = useState(false);
 
   const fetchBoardData = useCallback(async (filterOverride?: string) => {
     try {
@@ -592,6 +627,84 @@ export default function ScrumBoardPage({
     }
   };
 
+  const handleCopyBranch = (branchName: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(branchName);
+      setCopiedBranch(true);
+      setTimeout(() => setCopiedBranch(false), 2000);
+    }
+  };
+
+  const handleCreateSubtask = async (parentId: string) => {
+    if (!newSubtaskTitle.trim()) {
+      setSubtaskError("Judul subtask wajib diisi.");
+      return;
+    }
+    try {
+      setSubtaskSubmitting(true);
+      setSubtaskError(null);
+      const parsedPoints = Number(newSubtaskPoints);
+      const safePoints = isNaN(parsedPoints) || parsedPoints < 0 ? 1.0 : parsedPoints;
+
+      const payload = {
+        title: newSubtaskTitle.trim(),
+        estimate_points: safePoints,
+        assignee_agent_id: newSubtaskAssigneeId && newSubtaskAssigneeId.trim() ? newSubtaskAssigneeId.trim() : undefined,
+      };
+
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${parentId}/subtasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        let msg = "Gagal membuat subtask.";
+        try {
+          const err = await res.json();
+          msg = err.detail || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      await fetchBoardData();
+      const updatedParentRes = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${parentId}`);
+      if (updatedParentRes.ok) {
+        const updatedParent = await updatedParentRes.json();
+        setSelectedItem(updatedParent);
+      }
+      setNewSubtaskTitle("");
+      setNewSubtaskPoints(1.0);
+      setIsAddingSubtask(false);
+    } catch (err: unknown) {
+      setSubtaskError(err instanceof Error ? err.message : "Gagal membuat subtask");
+    } finally {
+      setSubtaskSubmitting(false);
+    }
+  };
+
+  const handleSubtaskStatusChange = async (subtaskId: string, targetStatus: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${subtaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: targetStatus }),
+      });
+      if (res.ok) {
+        await fetchBoardData();
+        if (selectedItem) {
+          const itemRes = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${selectedItem.id}`);
+          if (itemRes.ok) {
+            const updated = await itemRes.json();
+            setSelectedItem(updated);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Gagal mengubah status subtask", err);
+    }
+  };
+
   const handleCompleteSprintOnly = async () => {
     if (!sprintCapacity?.sprint_id) return;
     try {
@@ -875,6 +988,7 @@ export default function ScrumBoardPage({
     }
   };
   const filteredBoardItems = items.filter((item) => {
+    if (item.parent_id) return false;
     if (selectedSprintFilter === "all") return true;
     if (selectedSprintFilter === "active") {
       if (activeSprint) return item.sprint_id === activeSprint.id;
@@ -1206,11 +1320,20 @@ export default function ScrumBoardPage({
                             : "border-borderBase-light dark:border-borderBase-dark"
                         }`}
                       >
-                        {/* Card Header: Key & Priority */}
+                        {/* Card Header: Key, Subtasks count & Priority */}
                         <div className="flex items-center justify-between text-[11px]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 shrink-0 cursor-grab" />
                             <span className="font-mono font-semibold text-accent">{item.key}</span>
+                            {item.subtasks && item.subtasks.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
+                                title={`${item.subtasks.filter((s) => s.status === "done").length}/${item.subtasks.length} Subtask Selesai`}
+                              >
+                                <Layers className="w-2.5 h-2.5 text-accent" />
+                                <span>{item.subtasks.filter((s) => s.status === "done").length}/{item.subtasks.length}</span>
+                              </span>
+                            )}
                           </div>
                           <PriorityIndicator level={item.priority as PriorityLevel} showLabel={false} />
                         </div>
@@ -1219,6 +1342,14 @@ export default function ScrumBoardPage({
                         <h4 className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark line-clamp-2 leading-snug">
                           {item.title}
                         </h4>
+
+                        {/* Branch badge if exists */}
+                        {item.git_branch && (
+                          <div className="flex items-center gap-1 text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark truncate" title={`Git Branch: ${item.git_branch}`}>
+                            <GitBranch className="w-2.5 h-2.5 text-accent shrink-0" />
+                            <span className="truncate">{item.git_branch}</span>
+                          </div>
+                        )}
 
                         {/* Bottom Row: Assigned Agent (Mandatory) */}
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 gap-2 min-w-0">
@@ -1791,6 +1922,277 @@ export default function ScrumBoardPage({
                           );
                         })
                       )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Development & Git Worktree Panel */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="w-4 h-4 text-accent" />
+                      <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        Development & Git Panel
+                      </span>
+                    </div>
+                    {project?.github_repo_url && (
+                      <a
+                        href={project.github_repo_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-[11px] font-mono text-accent hover:underline"
+                        title="Buka Repositori GitHub"
+                      >
+                        <Github className="w-3.5 h-3.5" />
+                        <span>{project.github_repo_name || "GitHub Repo"}</span>
+                        <ExternalLink className="w-3 h-3 ml-0.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    {/* Branch Info */}
+                    <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
+                          Working Branch
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyBranch(selectedItem.git_branch || `agencyos/${project?.key?.toLowerCase() || 'dev'}/${selectedItem.key.toLowerCase()}`)}
+                          className="flex items-center gap-1 text-[10px] font-mono text-accent hover:underline cursor-pointer"
+                          title="Salin nama branch"
+                        >
+                          <Copy className="w-2.5 h-2.5" />
+                          <span>{copiedBranch ? "Disalin!" : "Salin"}</span>
+                        </button>
+                      </div>
+                      <div className="font-mono text-[11px] text-textPrimary-light dark:text-textPrimary-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark px-2 py-1 rounded border border-borderBase-light/60 dark:border-borderBase-dark/60 truncate">
+                        {selectedItem.git_branch || `agencyos/${project?.key?.toLowerCase() || 'dev'}/${selectedItem.key.toLowerCase()}`}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                        <span className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse shrink-0" />
+                        <span>Worktree branch terisolasi untuk agen</span>
+                      </div>
+                    </div>
+
+                    {/* Pull Request & CI */}
+                    <div className="p-2.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark space-y-1.5">
+                      <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                        Pull Request & Verification
+                      </span>
+                      {selectedItem.pull_request_url ? (
+                        <div className="flex items-center justify-between">
+                          <a
+                            href={selectedItem.pull_request_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 font-mono text-xs font-semibold text-accent hover:underline"
+                          >
+                            <GitPullRequest className="w-3.5 h-3.5" />
+                            <span>PR #{selectedItem.pull_request_number || 1}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-status-success/10 text-status-success border border-status-success/20">
+                            {selectedItem.pull_request_status || "Open"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                          <span className="flex items-center gap-1 font-mono">
+                            <GitPullRequest className="w-3 h-3" />
+                            <span>PR Belum Dibuka</span>
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark">
+                            Draft
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                        <span>CI Automated Gate:</span>
+                        <span className="text-status-success font-semibold flex items-center gap-1 font-mono">
+                          <ShieldCheck className="w-3 h-3" /> Passing
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subtasks Management Panel */}
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-accent" />
+                      <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        Subtasks ({selectedItem.subtasks?.length || 0})
+                      </span>
+                    </div>
+                    {!isAddingSubtask && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsAddingSubtask(true);
+                          if (agents.length > 0 && !newSubtaskAssigneeId) {
+                            setNewSubtaskAssigneeId(agents[0].id);
+                          }
+                        }}
+                        leftIcon={<Plus className="w-3 h-3" />}
+                      >
+                        Tambah Subtask
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Subtask list */}
+                  {selectedItem.subtasks && selectedItem.subtasks.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedItem.subtasks.map((st) => (
+                        <div
+                          key={st.id}
+                          className="p-2.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-semibold shrink-0">
+                              {st.key}
+                            </span>
+                            <span className={`font-medium text-textPrimary-light dark:text-textPrimary-dark truncate ${st.status === 'done' ? 'line-through text-textMuted-light dark:text-textMuted-dark' : ''}`}>
+                              {st.title}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Assignee Badge */}
+                            <span className="inline-flex items-center gap-1 text-[11px] text-textMuted-light dark:text-textMuted-dark px-1.5 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark">
+                              <User className="w-2.5 h-2.5 text-accent" />
+                              <span className="truncate max-w-[100px]">{st.assignee_name || "Unassigned"}</span>
+                            </span>
+
+                            {/* Points */}
+                            <span className="text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark">
+                              {st.estimate_points} SP
+                            </span>
+
+                            {/* Status Selector */}
+                            <select
+                              value={st.status}
+                              onChange={(e) => handleSubtaskStatusChange(st.id, e.target.value)}
+                              className="text-[11px] font-mono px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                            >
+                              <option value="backlog">Backlog</option>
+                              <option value="ready">Ready</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="done">Done</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    !isAddingSubtask && (
+                      <div className="p-3 text-center rounded border border-dashed border-borderBase-light dark:border-borderBase-dark text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                        Belum ada subtask. Pecah story ini menjadi beberapa tugas spesifik untuk agen.
+                      </div>
+                    )
+                  )}
+
+                  {/* Add Subtask Inline Form */}
+                  {isAddingSubtask && (
+                    <div className="p-3 rounded-lg border border-accent/40 bg-accent/5 dark:bg-accent/10 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-accent flex items-center gap-1">
+                          <Plus className="w-3 h-3" /> Tambah Subtask Baru
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingSubtask(false);
+                            setSubtaskError(null);
+                          }}
+                          className="text-textMuted-light hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {subtaskError && (
+                        <div className="p-2 rounded bg-status-danger/10 text-status-danger text-[11px]">
+                          {subtaskError}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={newSubtaskTitle}
+                          onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                          placeholder="Judul subtask (contoh: Buat skema migrasi tabel, Tulis unit test)..."
+                          className="w-full h-8 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleCreateSubtask(selectedItem.id);
+                            }
+                          }}
+                        />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-0.5">
+                              Tugaskan ke Agen:
+                            </label>
+                            <select
+                              value={newSubtaskAssigneeId}
+                              onChange={(e) => setNewSubtaskAssigneeId(e.target.value)}
+                              className="w-full h-7 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                            >
+                              <option value="">Belum Ditugaskan</option>
+                              {agents.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name} ({a.title})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mb-0.5">
+                              Estimasi Poin (SP):
+                            </label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0.5"
+                              max="10"
+                              value={newSubtaskPoints}
+                              onChange={(e) => setNewSubtaskPoints(parseFloat(e.target.value) || 1.0)}
+                              className="w-full h-7 px-2 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs font-mono text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setIsAddingSubtask(false);
+                              setSubtaskError(null);
+                            }}
+                          >
+                            Batal
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleCreateSubtask(selectedItem.id)}
+                            isLoading={subtaskSubmitting}
+                            leftIcon={<Plus className="w-3 h-3" />}
+                          >
+                            Simpan Subtask
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

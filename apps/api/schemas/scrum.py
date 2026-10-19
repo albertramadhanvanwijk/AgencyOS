@@ -12,6 +12,11 @@ class WorkItemBase(BaseModel):
     definition_of_done: List[str] = Field(default_factory=list)
     assignee_agent_id: Optional[str] = None
     sprint_id: Optional[str] = None
+    parent_id: Optional[str] = None
+    git_branch: Optional[str] = None
+    pull_request_url: Optional[str] = None
+    pull_request_number: Optional[int] = None
+    pull_request_status: Optional[str] = "draft"
 
 class WorkItemCreate(WorkItemBase):
     project_id: str
@@ -27,7 +32,24 @@ class WorkItemUpdate(BaseModel):
     definition_of_done: Optional[List[str]] = None
     assignee_agent_id: Optional[str] = None
     sprint_id: Optional[str] = None
+    parent_id: Optional[str] = None
     blocker_reason: Optional[str] = None
+    git_branch: Optional[str] = None
+    pull_request_url: Optional[str] = None
+    pull_request_number: Optional[int] = None
+    pull_request_status: Optional[str] = None
+
+class WorkItemSubtaskOut(BaseModel):
+    id: str
+    key: str
+    title: str
+    type: str = "subtask"
+    status: str
+    priority: str
+    estimate_points: float
+    assignee_agent_id: Optional[str] = None
+    assignee_name: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
 
 class WorkItemOut(WorkItemBase):
     id: str
@@ -39,5 +61,6 @@ class WorkItemOut(WorkItemBase):
     updated_at: datetime
     assignee_name: Optional[str] = None
     project_name: Optional[str] = None
+    subtasks: List[WorkItemSubtaskOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

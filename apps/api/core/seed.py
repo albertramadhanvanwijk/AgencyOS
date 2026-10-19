@@ -633,6 +633,10 @@ def init_db():
         ("pull_request_status", "VARCHAR(32) DEFAULT 'draft'"),
         ("revision_notes", "TEXT"),
         ("revision_count", "INTEGER DEFAULT 0"),
+        ("qa_status", "VARCHAR(32) DEFAULT 'pending'"),
+        ("qa_verified_by", "VARCHAR(128)"),
+        ("qa_verified_at", "DATETIME"),
+        ("qa_report", "JSON"),
     ]:
         try:
             from sqlalchemy import text

@@ -4,9 +4,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models import WorkItem, Project, AIAgent, AuditEvent
-from apps.api.schemas.scrum import WorkItemUpdate, WorkItemOut, WorkItemSubtaskOut, WorkItemCreate
+from apps.api.schemas.scrum import WorkItemUpdate, WorkItemOut, WorkItemSubtaskOut, WorkItemCreate, QAVerifyIn, QAVerifyResultOut
 from apps.api.schemas.scheduler import AgentRecommendationOut, AssignAgentRequest
 from apps.api.services.scheduler import scheduler_service
+from apps.api.services.qa_verifier import QAVerifierService
 
 router = APIRouter(prefix="/work-items", tags=["Scrum & Work Items"])
 
@@ -53,6 +54,10 @@ def _build_work_item_out(item: WorkItem) -> WorkItemOut:
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=item.project.name if item.project else None,
         subtasks=subtasks_out,
+        qa_status=item.qa_status or "pending",
+        qa_verified_by=item.qa_verified_by,
+        qa_verified_at=item.qa_verified_at,
+        qa_report=item.qa_report or {},
     )
 
 @router.get("/{item_id}", response_model=WorkItemOut)
@@ -116,11 +121,30 @@ def update_work_item(
                 )
 
         # Guard 4: In Progress -> Done requires passing review or DoD
-        if target_status == "done" and previous_status not in ("in_review", "done"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"State machine rejection: Direct transition from '{previous_status}' to 'Done' is invalid. Work items must pass through 'In Review'."
-            )
+        if target_status == "done":
+            if previous_status not in ("in_review", "done"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"State machine rejection: Direct transition from '{previous_status}' to 'Done' is invalid. Work items must pass through 'In Review'."
+                )
+            # Enforce QA Verification & Definition of Done Gate
+            if item.qa_status == "failed":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Penolakan Gate QA: Item ini gagal dalam verifikasi pengujian QA. Perbaiki issue sebelum menandai Done."
+                )
+            if item.qa_status != "passed":
+                qa_res = QAVerifierService.verify_work_item(
+                    item.id,
+                    verified_by="Sentinel (Automated QA Gate)",
+                    force_override=False,
+                    db=db
+                )
+                if qa_res["status"] != "passed":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Penolakan Gate QA / Definition of Done: {qa_res['message']}"
+                    )
 
         item.status = target_status
 
@@ -363,6 +387,36 @@ def assign_agent_to_work_item(
         updated_at=updated_item.updated_at,
         assignee_name=updated_item.assignee.name if updated_item.assignee else None,
         project_name=updated_item.project.name if updated_item.project else None,
+        qa_status=updated_item.qa_status or "pending",
+        qa_verified_by=updated_item.qa_verified_by,
+        qa_verified_at=updated_item.qa_verified_at,
+        qa_report=updated_item.qa_report or {},
     )
+
+
+@router.post("/{item_id}/verify-qa", response_model=QAVerifyResultOut)
+def verify_work_item_qa(
+    item_id: str,
+    payload: Optional[QAVerifyIn] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Menjalankan pengujian mutu & verifikasi Acceptance Criteria / DoD oleh Sentinel (Lead QA Engineer).
+    """
+    verified_by = payload.verified_by if payload else "Sentinel (Lead QA Engineer)"
+    force = payload.force_override if payload else False
+    return QAVerifierService.verify_work_item(item_id, verified_by, force, db)
+
+
+@router.get("/{item_id}/qa-status")
+def get_work_item_qa_status(
+    item_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Mengambil status kepatuhan QA & checklist Definition of Done (DoD).
+    """
+    return QAVerifierService.get_qa_status(item_id, db)
+
 
 

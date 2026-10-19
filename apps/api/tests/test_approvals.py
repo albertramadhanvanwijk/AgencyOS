@@ -3,9 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from apps.api.main import app
 
-client = TestClient(app)
-
-def test_approvals_summary_endpoint():
+def test_approvals_summary_endpoint(client):
     res = client.get("/api/v1/approvals/summary")
     assert res.status_code == 200
     data = res.json()
@@ -18,7 +16,7 @@ def test_approvals_summary_endpoint():
     assert isinstance(data["pending_recruitment"], list)
     assert isinstance(data["pending_work_items"], list)
 
-def test_sequential_sprint_guard(db_session):
+def test_sequential_sprint_guard(client):
     unique_suffix = uuid.uuid4().hex[:4].upper()
     proj_key = f"SS{unique_suffix}"
     proj_name = f"Sequential Sprint PRJ {unique_suffix}"

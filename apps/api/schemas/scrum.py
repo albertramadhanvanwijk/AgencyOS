@@ -64,5 +64,30 @@ class WorkItemOut(WorkItemBase):
     subtasks: List[WorkItemSubtaskOut] = Field(default_factory=list)
     revision_notes: Optional[str] = None
     revision_count: Optional[int] = 0
+    qa_status: Optional[str] = "pending"
+    qa_verified_by: Optional[str] = None
+    qa_verified_at: Optional[datetime] = None
+    qa_report: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class QAVerifyIn(BaseModel):
+    verified_by: Optional[str] = "QA Lead (Sentinel)"
+    force_override: bool = False
+
+class QAVerifyCheckItem(BaseModel):
+    name: str
+    type: str  # "acceptance_criteria", "definition_of_done", "automated_check"
+    passed: bool
+    details: str
+
+class QAVerifyResultOut(BaseModel):
+    work_item_id: str
+    work_item_key: str
+    status: str  # "passed", "failed"
+    message: str
+    verified_by: str
+    verified_at: datetime
+    total_checks: int
+    passed_checks: int
+    checks: List[QAVerifyCheckItem]

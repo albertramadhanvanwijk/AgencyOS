@@ -128,6 +128,10 @@ interface WorkItem {
   subtasks?: WorkItemSubtask[];
   revision_notes?: string;
   revision_count?: number;
+  qa_status?: string;
+  qa_verified_by?: string;
+  qa_verified_at?: string;
+  qa_report?: any;
 }
 
 interface ExecutionRun {
@@ -361,6 +365,10 @@ export default function ScrumBoardPage({
   const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [revisionTargetItem, setRevisionTargetItem] = useState<WorkItem | null>(null);
   const [revisionError, setRevisionError] = useState<string | null>(null);
+
+  // QA Verification State
+  const [qaVerifying, setQaVerifying] = useState(false);
+  const [qaVerifyError, setQaVerifyError] = useState<string | null>(null);
 
   const fetchBoardData = useCallback(async (filterOverride?: string) => {
     try {
@@ -687,6 +695,43 @@ export default function ScrumBoardPage({
       } else {
         setTransitionError("State transition rejected by server.");
       }
+    }
+  };
+
+  const handleRunQAVerify = async (itemId: string, forceOverride: boolean = false) => {
+    try {
+      setQaVerifying(true);
+      setQaVerifyError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}/verify-qa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verified_by: "Sentinel (Lead QA Engineer)",
+          force_override: forceOverride,
+        }),
+      });
+
+      if (!res.ok) {
+        let msg = "Gagal memverifikasi QA.";
+        try {
+          const err = await res.json();
+          msg = err.detail || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      const result = await res.json();
+      const itemRes = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}`);
+      if (itemRes.ok) {
+        const updatedItem = await itemRes.json();
+        setSelectedItem(updatedItem);
+        setItems((prev) => prev.map((it) => (it.id === updatedItem.id ? updatedItem : it)));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal memverifikasi QA.";
+      setQaVerifyError(msg);
+    } finally {
+      setQaVerifying(false);
     }
   };
 
@@ -1742,6 +1787,31 @@ export default function ScrumBoardPage({
                                 <span>Rev {item.revision_count}</span>
                               </span>
                             ) : null}
+                            {item.qa_status === "passed" ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.2 rounded bg-status-success/15 text-status-success border border-status-success/30 font-semibold"
+                                title="QA Verified (Passed)"
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>QA Pass</span>
+                              </span>
+                            ) : item.qa_status === "failed" ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.2 rounded bg-status-danger/15 text-status-danger border border-status-danger/30 font-semibold"
+                                title="QA Verification Failed"
+                              >
+                                <AlertCircle className="w-2.5 h-2.5" />
+                                <span>QA Fail</span>
+                              </span>
+                            ) : item.status === "in_review" ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold"
+                                title="Menunggu Verifikasi QA"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                                <span>QA Req</span>
+                              </span>
+                            ) : null}
                             {item.subtasks && item.subtasks.length > 0 && (
                               <span
                                 className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
@@ -2194,6 +2264,118 @@ export default function ScrumBoardPage({
                     </ul>
                   </div>
                 )}
+
+                {/* QA Verification & DoD Enforcement Panel */}
+                <div
+                  className={`p-3.5 rounded-lg border space-y-3 ${
+                    selectedItem.qa_status === "passed"
+                      ? "border-status-success/40 bg-status-success/5 dark:bg-status-success/10"
+                      : selectedItem.qa_status === "failed"
+                      ? "border-status-danger/40 bg-status-danger/5 dark:bg-status-danger/10"
+                      : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck
+                        className={`w-4 h-4 ${
+                          selectedItem.qa_status === "passed"
+                            ? "text-status-success"
+                            : selectedItem.qa_status === "failed"
+                            ? "text-status-danger"
+                            : "text-accent"
+                        }`}
+                      />
+                      <span className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        QA Verification & Quality Gate (Sentinel)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedItem.qa_status === "passed" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-status-success/15 text-status-success border border-status-success/30">
+                          <CheckCircle2 className="w-3 h-3" /> QA PASSED
+                        </span>
+                      ) : selectedItem.qa_status === "failed" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-status-danger/15 text-status-danger border border-status-danger/30">
+                          <AlertCircle className="w-3 h-3" /> QA FAILED
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                          <Clock className="w-3 h-3" /> MENUNGGU QA
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Summary / Report text */}
+                  {selectedItem.qa_report?.summary && (
+                    <div className="text-[11px] text-textSecondary-light dark:text-textSecondary-dark leading-relaxed bg-surface-light dark:bg-surface-dark p-2.5 rounded border border-borderBase-light/60 dark:border-borderBase-dark/60">
+                      <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark mb-0.5">
+                        Laporan Pengujian Sentinel:
+                      </div>
+                      <p>{selectedItem.qa_report.summary}</p>
+                      {selectedItem.qa_verified_by && (
+                        <div className="mt-1.5 pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px] text-textMuted-light dark:text-textMuted-dark flex items-center justify-between">
+                          <span>Verifikator: {selectedItem.qa_verified_by}</span>
+                          {selectedItem.qa_verified_at && (
+                            <span>{new Date(selectedItem.qa_verified_at).toLocaleString("id-ID")}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Checks list */}
+                  {selectedItem.qa_report?.checks && Array.isArray(selectedItem.qa_report.checks) && (
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                        Daftar Pengecekan Mutu & Kriteria:
+                      </span>
+                      {selectedItem.qa_report.checks.map((check: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-2 text-[11px] p-2 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light/40 dark:border-borderBase-dark/40"
+                        >
+                          {check.passed ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-status-success shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-3.5 h-3.5 text-status-danger shrink-0 mt-0.5" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark block">
+                              {check.name}
+                            </span>
+                            <span className="text-textMuted-light dark:text-textMuted-dark text-[10px]">
+                              {check.details}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {qaVerifyError && (
+                    <div className="p-2 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-xs flex items-center gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{qaVerifyError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                      Sentinel QA memverifikasi bukti kerja terhadap Definition of Done.
+                    </span>
+                    <Button
+                      size="sm"
+                      variant={selectedItem.qa_status === "passed" ? "outline" : "primary"}
+                      onClick={() => handleRunQAVerify(selectedItem.id)}
+                      isLoading={qaVerifying}
+                      leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
+                    >
+                      {selectedItem.qa_status ? "Uji Ulang QA (Sentinel)" : "Jalankan Verifikasi QA"}
+                    </Button>
+                  </div>
+                </div>
 
                 {/* Assignee & Model & Estimate Card */}
                 <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2789,9 +2971,22 @@ export default function ScrumBoardPage({
                       >
                         Hasil Run & Diffs
                       </Button>
-                      <Button size="sm" variant="primary" onClick={() => handleTransition(selectedItem.id, "done")}>
-                        Setujui (Approve) ✓
-                      </Button>
+                      {selectedItem.qa_status !== "passed" ? (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleRunQAVerify(selectedItem.id)}
+                          isLoading={qaVerifying}
+                          leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
+                          title="Wajib lulus verifikasi QA sebelum disetujui (Done)"
+                        >
+                          Verifikasi QA (Sentinel)
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="primary" onClick={() => handleTransition(selectedItem.id, "done")}>
+                          Setujui (Approve) ✓
+                        </Button>
+                      )}
                     </>
                   )}
                   {selectedItem.status === "done" && (

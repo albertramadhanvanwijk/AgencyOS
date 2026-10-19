@@ -42,6 +42,12 @@ class WorkItem(Base):
     revision_notes = Column(Text, nullable=True)
     revision_count = Column(Integer, default=0)
 
+    # QA Verification & Definition of Done Gate
+    qa_status = Column(String(32), default="pending")  # pending, in_testing, passed, failed
+    qa_verified_by = Column(String(128), nullable=True)
+    qa_verified_at = Column(DateTime, nullable=True)
+    qa_report = Column(JSON, default=dict)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from apps.api.core.config import settings
 from apps.api.core.seed import init_db
-from apps.api.routers import health, organization, workforce, projects, scrum, runs, audit, recruitment, approvals
+from apps.api.routers import health, organization, workforce, projects, scrum, runs, audit, recruitment, approvals, prd
 
 # Ensure workspace root directory exists
 os.makedirs(settings.WORKSPACE_ROOT, exist_ok=True)
@@ -56,6 +56,7 @@ app.include_router(runs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(audit.router, prefix=settings.API_V1_PREFIX)
 app.include_router(recruitment.router, prefix=settings.API_V1_PREFIX)
 app.include_router(approvals.router, prefix=settings.API_V1_PREFIX)
+app.include_router(prd.router, prefix=settings.API_V1_PREFIX)
 
 
 

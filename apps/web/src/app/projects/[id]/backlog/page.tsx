@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Sparkles,
   User,
+  FileText,
   Layers,
   Search,
   X,
@@ -493,28 +494,35 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      {/* Navigation Tabs: Backlog Planning on Left, Kanban Board on Right */}
-      <div className="flex items-center space-x-2 border-b border-borderBase-light dark:border-borderBase-dark pb-3">
+      {/* Navigation Tabs: SDLC Stages */}
+      <div className="flex items-center space-x-2 border-b border-borderBase-light dark:border-borderBase-dark pb-3 overflow-x-auto">
+        <Link
+          href={`/projects/${projectId}/prd`}
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
+        >
+          <FileText className="w-4 h-4" />
+          <span>1. Dokumen PRD</span>
+        </Link>
         <Link
           href={`/projects/${projectId}/backlog`}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors shrink-0"
         >
           <ListTodo className="w-4 h-4" />
-          <span>Backlog & Sprint Planning</span>
+          <span>2. Backlog & Sprints</span>
         </Link>
         <Link
           href={`/projects/${projectId}/board`}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
         >
           <Kanban className="w-4 h-4" />
-          <span>Papan Scrum (Board)</span>
+          <span>3. Papan Scrum (Board)</span>
         </Link>
         <Link
           href={`/projects/${projectId}/analytics`}
-          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
         >
           <BarChart2 className="w-4 h-4" />
-          <span>Analitik & Laporan Sprint</span>
+          <span>4. Analitik & Retro</span>
         </Link>
       </div>
 

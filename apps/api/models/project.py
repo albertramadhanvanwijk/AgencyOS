@@ -29,6 +29,7 @@ class Project(Base):
 
     sprints = relationship("Sprint", back_populates="project", cascade="all, delete-orphan")
     work_items = relationship("WorkItem", back_populates="project", cascade="all, delete-orphan")
+    prd = relationship("ProjectPRD", back_populates="project", uselist=False, cascade="all, delete-orphan")
 
 class Sprint(Base):
     __tablename__ = "sprints"
@@ -51,3 +52,38 @@ class Sprint(Base):
 
     project = relationship("Project", back_populates="sprints")
     work_items = relationship("WorkItem", back_populates="sprint")
+
+
+class ProjectPRD(Base):
+    """
+    Formal Product Requirement Document (PRD) / Software Requirement Specification.
+    Acts as the baseline requirement document formulated by Technical Product Owner Dewi Lestari
+    and approved by the Project Owner before Sprints, Design, and Engineering can commence.
+    """
+    __tablename__ = "project_prds"
+
+    id = Column(String(64), primary_key=True, default=generate_uuid)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True)
+    version = Column(Integer, default=1)
+    status = Column(String(32), default="draft") # "draft", "in_review", "approved"
+
+    # Core Document Sections
+    executive_summary = Column(Text, nullable=True)
+    target_users = Column(JSON, default=list) # [{"persona": "...", "description": "...", "needs": [...]}]
+    user_journeys = Column(JSON, default=list) # [{"title": "...", "actor": "...", "steps": [...]}]
+    functional_requirements = Column(JSON, default=list) # [{"id": "FR-01", "module": "...", "title": "...", "description": "...", "priority": "high", "criteria": [...]}]
+    non_functional_requirements = Column(JSON, default=list) # [{"category": "Security|Performance|Accessibility", "requirement": "..."}]
+    scope_boundaries = Column(JSON, default=dict) # {"in_scope": [...], "out_of_scope": [...]}
+    tech_stack_recommendation = Column(JSON, default=dict) # {"frontend": "...", "backend": "...", "database": "...", "tools": [...]}
+    
+    # Discovery Q&A History
+    interview_answers = Column(JSON, nullable=True) # [{"question": "...", "answer": "..."}]
+
+    # Human Sign-Off Gate
+    approved_by = Column(String(128), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", back_populates="prd")

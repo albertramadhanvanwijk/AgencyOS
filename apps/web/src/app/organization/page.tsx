@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
 import { AppShell } from "../../components/layout/AppShell";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/Button";
 import { TableSkeleton } from "../../components/ui/LoadingSkeleton";
 import { ErrorState } from "../../components/ui/ErrorState";
@@ -19,10 +19,17 @@ import {
   Sparkles,
   ArrowRight,
   RotateCcw,
-  Layers,
-  Code2,
-  ShieldAlert,
+  Bot,
+  ExternalLink,
+  Search,
   Check,
+  Cpu,
+  Layers,
+  FileText,
+  Filter,
+  Code2,
+  Palette,
+  Terminal,
 } from "lucide-react";
 
 interface Department {
@@ -50,18 +57,64 @@ interface JobRole {
   agents_count: number;
 }
 
+interface AgentSkill {
+  id: string;
+  name: string;
+  is_verified: boolean;
+  verified_evidence?: string;
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  title: string;
+  role_id: string;
+  role_name?: string;
+  department_id: string;
+  department_name?: string;
+  lifecycle_state: string;
+  availability_state: string;
+  qualification_state: string;
+  max_concurrency: number;
+  current_concurrency: number;
+  engine_adapter: string;
+  llm_profile_id?: string | null;
+  llm_profile_name?: string | null;
+  llm_model?: string | null;
+  instructions?: string;
+  current_profile_version: number;
+  skills: AgentSkill[];
+}
+
+interface DirectorateConfig {
+  id: string;
+  code: string;
+  name: string;
+  deptCodes: string[];
+  deptIds: string[];
+  description: string;
+  badgeBg: string;
+  borderTheme: string;
+  icon: React.ReactNode;
+}
+
 export default function OrganizationPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<JobRole[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Selected agent for inspect modal
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
 
   // Sync Agency Structure State
   const [syncingStructure, setSyncingStructure] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
 
-  // Filter department state
-  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("all");
+  // Filter division state & search query
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState<string>("all");
+  const [searchAgentQuery, setSearchAgentQuery] = useState<string>("");
 
   // Propose Role Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -74,13 +127,56 @@ export default function OrganizationPage() {
   const [roleSkills, setRoleSkills] = useState("");
   const [roleResp, setRoleResp] = useState("");
 
+  const directorates: DirectorateConfig[] = useMemo(
+    () => [
+      {
+        id: "dir-prod",
+        code: "PROD_DESIGN",
+        name: "Direktorat Produk, Riset & Desain",
+        deptCodes: ["PROD", "DESIGN"],
+        deptIds: ["dept-prod", "dept-des"],
+        description:
+          "Bertanggung jawab atas riset kebutuhan bisnis, penyusunan dokumen PRD/SRS formal, user journey mapping, dan arsitektur token UI/UX WCAG 2.1.",
+        badgeBg: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30",
+        borderTheme: "border-blue-500/30",
+        icon: <Palette className="w-5 h-5 text-blue-500" />,
+      },
+      {
+        id: "dir-eng",
+        code: "ENG_ARCH",
+        name: "Direktorat Rekayasa Perangkat Lunak & Arsitektur Teknis",
+        deptCodes: ["ENG", "SEC_INFRA"],
+        deptIds: ["dept-eng", "a4f06779-8b92-4250-8268-48a437be580c"],
+        description:
+          "Bertanggung jawab atas arsitektur modular Clean Architecture, perancangan skema database ERD, kontrak REST API OpenAPI, dan pertahanan siber OWASP Top 10.",
+        badgeBg: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30",
+        borderTheme: "border-emerald-500/30",
+        icon: <Code2 className="w-5 h-5 text-emerald-500" />,
+      },
+      {
+        id: "dir-delivery",
+        code: "QA_DEVOPS",
+        name: "Direktorat Mutu, DevOps & Delivery Operasional",
+        deptCodes: ["OPS", "QA"],
+        deptIds: ["dept-delivery", "dept-qa"],
+        description:
+          "Bertanggung jawab atas ritme Scrum, verifikasi gerbang mutu Definition of Done (DoD Gate), isolasi Git Worktree, pipeline CI/CD, dan publikasi rilis.",
+        badgeBg: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30",
+        borderTheme: "border-amber-500/30",
+        icon: <Terminal className="w-5 h-5 text-amber-500" />,
+      },
+    ],
+    []
+  );
+
   const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [deptsRes, rolesRes] = await Promise.all([
+      const [deptsRes, rolesRes, agentsRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/v1/organization/departments"),
         fetch("http://127.0.0.1:8000/api/v1/organization/roles"),
+        fetch("http://127.0.0.1:8000/api/v1/workforce/agents"),
       ]);
 
       if (!deptsRes.ok || !rolesRes.ok) {
@@ -89,9 +185,11 @@ export default function OrganizationPage() {
 
       const deptsData = await deptsRes.json();
       const rolesData = await rolesRes.json();
+      const agentsData = agentsRes.ok ? await agentsRes.json() : [];
 
       setDepartments(deptsData);
       setRoles(rolesData);
+      setAgents(agentsData);
       if (deptsData.length > 0) setRoleDeptId(deptsData[0].id);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -180,16 +278,60 @@ export default function OrganizationPage() {
     }
   };
 
-  const filteredRoles =
-    selectedDeptFilter === "all"
-      ? roles
-      : roles.filter((r) => r.department_id === selectedDeptFilter);
+  // Helper to get agents belonging to a directorate
+  const getAgentsForDirectorate = (dir: DirectorateConfig) => {
+    return agents.filter((ag) => {
+      const matchDeptId = dir.deptIds.includes(ag.department_id);
+      const matchDeptCode = dir.deptCodes.some((code) => {
+        const d = departments.find((dept) => dept.code === code);
+        return d && d.id === ag.department_id;
+      });
+      const matchName = ag.department_name && dir.deptCodes.some((code) => {
+        if (code === "PROD") return ag.department_name?.toLowerCase().includes("product");
+        if (code === "DESIGN") return ag.department_name?.toLowerCase().includes("design");
+        if (code === "ENG") return ag.department_name?.toLowerCase().includes("engineer");
+        if (code === "OPS") return ag.department_name?.toLowerCase().includes("operation");
+        if (code === "QA") return ag.department_name?.toLowerCase().includes("quality");
+        return false;
+      });
+
+      const matchesDirectorate = matchDeptId || matchDeptCode || matchName;
+
+      if (!searchAgentQuery.trim()) return matchesDirectorate;
+
+      const q = searchAgentQuery.toLowerCase();
+      const matchQuery =
+        ag.name.toLowerCase().includes(q) ||
+        ag.title.toLowerCase().includes(q) ||
+        (ag.role_name && ag.role_name.toLowerCase().includes(q)) ||
+        ag.skills.some((s) => s.name.toLowerCase().includes(q));
+
+      return matchesDirectorate && matchQuery;
+    });
+  };
+
+  // Helper to get roles belonging to a directorate
+  const getRolesForDirectorate = (dir: DirectorateConfig) => {
+    return roles.filter((r) => {
+      const matchDeptId = dir.deptIds.includes(r.department_id);
+      const matchDeptCode = dir.deptCodes.some((code) => {
+        const d = departments.find((dept) => dept.code === code);
+        return d && d.id === r.department_id;
+      });
+      return matchDeptId || matchDeptCode;
+    });
+  };
+
+  const filteredDirectorates = useMemo(() => {
+    if (selectedDivisionFilter === "all") return directorates;
+    return directorates.filter((d) => d.id === selectedDivisionFilter);
+  }, [directorates, selectedDivisionFilter]);
 
   return (
     <AppShell>
       <PageHeader
-        title="Struktur Organisasi & Katalog Jabatan Agency"
-        description="Peta hierarki divisi perusahaan digital agency, jabatan spesialis standar, batas otorisasi, dan matriks kompetensi agen."
+        title="Struktur Organisasi & Personel per Divisi"
+        description="Peta hierarki divisi digital agency, rincian personel agen AI yang bertugas di tiap direktorat, serta spesifikasi peran terstandar."
         breadcrumbs={[
           { label: "Overview", href: "/" },
           { label: "Organization" },
@@ -237,32 +379,36 @@ export default function OrganizationPage() {
           {/* 1. EXECUTIVE LEADERSHIP APEX CARD (OWNER & MANAGING DIRECTOR) */}
           <div className="p-4 sm:p-5 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-transparent shadow-xs space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md">
-                  <Crown className="w-5 h-5 text-amber-300" />
+              <div className="flex items-center space-x-3.5">
+                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shrink-0">
+                  <Crown className="w-6 h-6 text-amber-300" />
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
                     <h2 className="text-base font-bold text-textPrimary-light dark:text-textPrimary-dark">
-                      ANDA (Owner & Managing Director)
+                      ANDA (Agency Owner & Managing Director)
                     </h2>
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
                       Supreme Decision Maker
                     </span>
                   </div>
-                  <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                  <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-0.5">
                     Pemegang otoritas tertinggi, penentu visi bisnis agency, dan pemegang hak tanda tangan persetujuan gerbang SDLC (*Gated Approvals*).
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 text-xs">
-                <div className="px-2.5 py-1.5 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5">
+              <div className="flex items-center space-x-2 text-xs shrink-0">
+                <div className="px-2.5 py-1.5 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5 shadow-xs">
                   <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
-                  <span>3 Direktorat Aktif</span>
+                  <span>3 Direktorat Utama</span>
                 </div>
-                <div className="px-2.5 py-1.5 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5">
-                  <Users className="w-3.5 h-3.5 text-accent" />
+                <div className="px-2.5 py-1.5 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5 shadow-xs">
+                  <Bot className="w-3.5 h-3.5 text-accent" />
+                  <span>{agents.length} Personel Agen</span>
+                </div>
+                <div className="px-2.5 py-1.5 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5 shadow-xs">
+                  <Users className="w-3.5 h-3.5 text-indigo-500" />
                   <span>{roles.length} Jabatan Spesialis</span>
                 </div>
               </div>
@@ -284,197 +430,419 @@ export default function OrganizationPage() {
             </div>
           </div>
 
-          {/* 2. PRIMARY DIRECTORATES & DEPARTMENTS */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold flex items-center space-x-2">
-                <Building2 className="w-4 h-4 text-accent" />
-                <span>Direktorat & Divisi Utama Agency ({departments.length})</span>
-              </h3>
-              <div className="flex items-center space-x-1.5 text-xs">
+          {/* 2. FILTER & SEARCH TOOLBAR */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark shadow-xs">
+            {/* Division Filter Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-textMuted-light dark:text-textMuted-dark mr-1 text-[11px] font-semibold flex items-center">
+                <Filter className="w-3 h-3 mr-1" /> Tampilkan:
+              </span>
+              <button
+                onClick={() => setSelectedDivisionFilter("all")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  selectedDivisionFilter === "all"
+                    ? "bg-accent text-white shadow-xs"
+                    : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                }`}
+              >
+                Semua Divisi ({directorates.length})
+              </button>
+              {directorates.map((dir) => (
                 <button
-                  onClick={() => setSelectedDeptFilter("all")}
-                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                    selectedDeptFilter === "all"
-                      ? "bg-accent text-white"
+                  key={dir.id}
+                  onClick={() => setSelectedDivisionFilter(dir.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
+                    selectedDivisionFilter === dir.id
+                      ? "bg-accent text-white shadow-xs"
                       : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
                   }`}
                 >
-                  Semua Divisi
+                  <span>{dir.name.split(" ")[1] || dir.name}</span>
                 </button>
-                {departments.map((d) => (
-                  <button
-                    key={d.id}
-                    onClick={() => setSelectedDeptFilter(d.id)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                      selectedDeptFilter === d.id
-                        ? "bg-accent text-white"
-                        : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-                    }`}
+              ))}
+            </div>
+
+            {/* Agent Search Input */}
+            <div className="relative w-full sm:w-72">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-textMuted-light dark:text-textMuted-dark" />
+              <input
+                type="text"
+                placeholder="Cari nama agen atau skill..."
+                value={searchAgentQuery}
+                onChange={(e) => setSearchAgentQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-xs focus:ring-1 focus:ring-accent"
+              />
+            </div>
+          </div>
+
+          {/* 3. DIVISION-BY-DIVISION SECTIONS (DETAIL AGENTS PER DIVISI) */}
+          <div className="space-y-8">
+            {filteredDirectorates.map((dir) => {
+              const dirAgents = getAgentsForDirectorate(dir);
+              const dirRoles = getRolesForDirectorate(dir);
+
+              return (
+                <div
+                  key={dir.id}
+                  className={`rounded-2xl border ${dir.borderTheme} bg-surface-light dark:bg-surface-dark shadow-sm overflow-hidden`}
+                >
+                  {/* Division Header Banner */}
+                  <div className="p-4 sm:p-5 border-b border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/40 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-start space-x-3.5">
+                      <div className="p-2.5 rounded-xl bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark shadow-xs shrink-0">
+                        {dir.icon}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${dir.badgeBg}`}>
+                            {dir.code}
+                          </span>
+                          <h3 className="text-base font-bold text-textPrimary-light dark:text-textPrimary-dark">
+                            {dir.name}
+                          </h3>
+                        </div>
+                        <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-1 max-w-3xl leading-relaxed">
+                          {dir.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 text-xs shrink-0">
+                      <span className="px-2.5 py-1 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark font-semibold flex items-center space-x-1.5 shadow-xs">
+                        <Bot className="w-3.5 h-3.5 text-accent" />
+                        <span>{dirAgents.length} Personel Agen</span>
+                      </span>
+                      <span className="px-2.5 py-1 rounded-lg bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark font-semibold flex items-center space-x-1.5 shadow-xs">
+                        <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>{dirRoles.length} Jabatan Resmi</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Section A: Assigned Agents in This Division */}
+                  <div className="p-4 sm:p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Bot className="w-4 h-4 text-accent" />
+                        <h4 className="text-sm font-bold text-textPrimary-light dark:text-textPrimary-dark">
+                          Personel Agen Bertugas ({dirAgents.length})
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                        Klik kartu agen untuk melihat mandat & spesifikasi detail
+                      </span>
+                    </div>
+
+                    {dirAgents.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {dirAgents.map((ag) => (
+                          <div
+                            key={ag.id}
+                            onClick={() => setSelectedAgent(ag)}
+                            className="p-3.5 rounded-xl border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/30 hover:border-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-all cursor-pointer shadow-xs flex flex-col justify-between space-y-3 group"
+                          >
+                            <div className="space-y-2">
+                              {/* Header info */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center space-x-2.5 min-w-0">
+                                  <div className="w-9 h-9 rounded-xl bg-accent text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                                    <Bot className="w-4 h-4" />
+                                  </div>
+                                  <div className="truncate">
+                                    <h5 className="text-xs font-bold text-textPrimary-light dark:text-textPrimary-dark group-hover:text-accent transition-colors truncate">
+                                      {ag.name}
+                                    </h5>
+                                    <div className="text-[11px] text-textMuted-light dark:text-textMuted-dark truncate">
+                                      {ag.title}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase shrink-0 ${
+                                    ag.lifecycle_state === "active"
+                                      ? "bg-status-success/15 text-status-success border border-status-success/30"
+                                      : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
+                                  }`}
+                                >
+                                  {ag.lifecycle_state}
+                                </span>
+                              </div>
+
+                              {/* Badges */}
+                              <div className="flex flex-wrap gap-1 text-[10px]">
+                                <span className="px-2 py-0.5 rounded bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textSecondary-light dark:text-textSecondary-dark">
+                                  {ag.role_name || ag.role_id}
+                                </span>
+                                {ag.qualification_state === "passed" && (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                                    <ShieldCheck className="w-3 h-3" />
+                                    <span>Passed QA</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Instructions excerpt */}
+                              {ag.instructions && (
+                                <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark line-clamp-2 italic bg-surface-light dark:bg-surface-dark p-2 rounded-lg border border-borderBase-light/50 dark:border-borderBase-dark/50">
+                                  &ldquo;{ag.instructions}&rdquo;
+                                </p>
+                              )}
+
+                              {/* Skills chips */}
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {ag.skills.slice(0, 3).map((sk) => (
+                                  <span
+                                    key={sk.id}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-surface-light dark:bg-surface-dark border border-borderBase-light/60 dark:border-borderBase-dark/60 font-mono text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1"
+                                  >
+                                    <Check className="w-2.5 h-2.5 text-status-success shrink-0" />
+                                    <span className="truncate max-w-[120px]">{sk.name}</span>
+                                  </span>
+                                ))}
+                                {ag.skills.length > 3 && (
+                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark self-center">
+                                    +{ag.skills.length - 3} lagi
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Footer info */}
+                            <div className="pt-2 border-t border-borderBase-light/50 dark:border-borderBase-dark/50 flex items-center justify-between text-[11px]">
+                              <span className="text-textMuted-light dark:text-textMuted-dark flex items-center space-x-1 font-mono">
+                                <Cpu className="w-3 h-3 text-accent" />
+                                <span className="truncate max-w-[140px]">{ag.llm_model || ag.engine_adapter}</span>
+                              </span>
+                              <span className="text-accent font-semibold flex items-center space-x-1 group-hover:translate-x-0.5 transition-transform">
+                                <span>Lihat Profil</span>
+                                <ArrowRight className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-xs text-textMuted-light dark:text-textMuted-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/30 rounded-xl border border-dashed border-borderBase-light dark:border-borderBase-dark">
+                        Tidak ada agen yang sesuai dengan pencarian di divisi ini.
+                      </div>
+                    )}
+
+                    {/* Section B: Roles Catalog in This Division */}
+                    <div className="pt-4 border-t border-borderBase-light dark:border-borderBase-dark space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-textSecondary-light dark:text-textSecondary-dark flex items-center space-x-1.5">
+                          <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>Katalog Jabatan di Divisi Ini ({dirRoles.length})</span>
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                        {dirRoles.map((r) => {
+                          const assigned = agents.filter(
+                            (a) => a.role_id === r.id || (a.role_name && a.role_name.toLowerCase().includes(r.code.toLowerCase()))
+                          );
+
+                          return (
+                            <div
+                              key={r.id}
+                              className="p-2.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10">
+                                  {r.code}
+                                </span>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold ${
+                                    assigned.length > 0
+                                      ? "bg-status-success/15 text-status-success"
+                                      : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
+                                  }`}
+                                >
+                                  {assigned.length > 0 ? `${assigned.length} Agen` : "Lowong"}
+                                </span>
+                              </div>
+
+                              <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
+                                {r.name}
+                              </div>
+
+                              {assigned.length > 0 ? (
+                                <div className="flex items-center space-x-1 pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                                    Diisi:
+                                  </span>
+                                  {assigned.slice(0, 2).map((ag) => (
+                                    <button
+                                      key={ag.id}
+                                      onClick={() => setSelectedAgent(ag)}
+                                      className="text-[10px] font-semibold text-accent hover:underline truncate max-w-[120px]"
+                                    >
+                                      {ag.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-textMuted-light dark:text-textMuted-dark italic pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                                  Belum ada agen terdaftar
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 4. AGENT DETAIL MODAL (INSPECT AGENT ROSTER) */}
+      {selectedAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-borderBase-light dark:border-borderBase-dark">
+              <div className="flex items-center space-x-3.5">
+                <div className="w-12 h-12 rounded-xl bg-accent text-white flex items-center justify-center font-bold text-base shadow-md">
+                  <Bot className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-base font-bold text-textPrimary-light dark:text-textPrimary-dark">
+                      {selectedAgent.name}
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase ${
+                        selectedAgent.lifecycle_state === "active"
+                          ? "bg-status-success/15 text-status-success border border-status-success/30"
+                          : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
+                      }`}
+                    >
+                      {selectedAgent.lifecycle_state}
+                    </span>
+                  </div>
+                  <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                    {selectedAgent.title} • {selectedAgent.department_name}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedAgent(null)}
+                className="p-1.5 rounded-lg hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Stats & Metadata */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+              <div className="p-2.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-0.5">
+                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block uppercase font-mono">
+                  Divisi Kerja
+                </span>
+                <span className="font-semibold truncate block">
+                  {selectedAgent.department_name || selectedAgent.department_id}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-0.5">
+                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block uppercase font-mono">
+                  Jabatan Spesialis
+                </span>
+                <span className="font-semibold truncate block">
+                  {selectedAgent.role_name || selectedAgent.role_id}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-0.5">
+                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block uppercase font-mono">
+                  Status Kualifikasi
+                </span>
+                <span className="font-semibold text-status-success flex items-center space-x-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="capitalize">{selectedAgent.qualification_state}</span>
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark space-y-0.5">
+                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block uppercase font-mono">
+                  Kapasitas Beban
+                </span>
+                <span className="font-semibold font-mono">
+                  {selectedAgent.current_concurrency} / {selectedAgent.max_concurrency} Task
+                </span>
+              </div>
+            </div>
+
+            {/* Engine & Model */}
+            <div className="p-3 rounded-xl bg-surfaceSecondary-light/70 dark:bg-surfaceSecondary-dark/70 border border-borderBase-light dark:border-borderBase-dark flex items-center justify-between text-xs">
+              <div className="flex items-center space-x-2">
+                <Cpu className="w-4 h-4 text-accent" />
+                <div>
+                  <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                    Mesin Eksekusi: {selectedAgent.engine_adapter.toUpperCase()}
+                  </div>
+                  <div className="text-[11px] text-textMuted-light dark:text-textMuted-dark font-mono">
+                    Model LLM: {selectedAgent.llm_model || "Default Model"} ({selectedAgent.llm_profile_name || "Built-in"})
+                  </div>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded text-[10px] bg-accent/10 text-accent font-mono font-semibold">
+                Profile v{selectedAgent.current_profile_version}
+              </span>
+            </div>
+
+            {/* System Persona / Instructions */}
+            <div className="space-y-1.5 text-xs">
+              <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center space-x-1.5">
+                <FileText className="w-3.5 h-3.5 text-accent" />
+                <span>Instruksi Sistem & Mandat Peran (System Persona)</span>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-[11px] leading-relaxed text-textSecondary-light dark:text-textSecondary-dark whitespace-pre-wrap">
+                {selectedAgent.instructions || "Tidak ada instruksi khusus."}
+              </div>
+            </div>
+
+            {/* Verified Skills */}
+            <div className="space-y-2 text-xs">
+              <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark flex items-center space-x-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                <span>Matriks Kompetensi Terverifikasi ({selectedAgent.skills.length})</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {selectedAgent.skills.map((sk) => (
+                  <div
+                    key={sk.id}
+                    className="p-2.5 rounded-lg bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark flex items-start space-x-2"
                   >
-                    {d.code}
-                  </button>
+                    <CheckCircle2 className="w-4 h-4 text-status-success shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                        {sk.name}
+                      </div>
+                      <div className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                        {sk.verified_evidence || "Lulus Uji Kompetensi SDLC"}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {departments
-                .filter((d) => ["PROD", "ENG", "OPS"].includes(d.code))
-                .concat(departments.filter((d) => !["PROD", "ENG", "OPS"].includes(d.code)))
-                .map((dept) => {
-                  const isProd = dept.code === "PROD";
-                  const isEng = dept.code === "ENG";
-                  const isOps = dept.code === "OPS";
-
-                  return (
-                    <div
-                      key={dept.id}
-                      onClick={() => setSelectedDeptFilter(dept.id === selectedDeptFilter ? "all" : dept.id)}
-                      className={`p-4 rounded-xl border transition-all cursor-pointer shadow-xs space-y-3 ${
-                        selectedDeptFilter === dept.id
-                          ? "border-accent ring-1 ring-accent bg-accent/5 dark:bg-accent/10"
-                          : "border-borderBase-light dark:border-borderBase-dark bg-surface-light dark:bg-surface-dark hover:border-accent/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`font-mono text-[10px] px-2 py-0.5 rounded font-bold ${
-                            isProd
-                              ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-                              : isEng
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                              : isOps
-                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                              : "bg-accent/10 text-accent border border-accent/20"
-                          }`}
-                        >
-                          DIVISI {dept.code}
-                        </span>
-                        <span className="text-xs font-mono text-textMuted-light dark:text-textMuted-dark">
-                          {dept.roles_count} Jabatan
-                        </span>
-                      </div>
-
-                      <div>
-                        <h4 className="text-sm font-bold text-textPrimary-light dark:text-textPrimary-dark">
-                          {dept.name}
-                        </h4>
-                        <p className="text-xs text-textMuted-light dark:text-textMuted-dark mt-1 line-clamp-2 leading-relaxed">
-                          {dept.description || "Divisi operasional agency."}
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 flex items-center justify-between text-xs">
-                        <span className="text-textMuted-light dark:text-textMuted-dark flex items-center space-x-1">
-                          <Users className="w-3.5 h-3.5 text-accent" />
-                          <span>{dept.agents_count} Agen Spesialis</span>
-                        </span>
-                        <span className="text-accent text-[11px] font-semibold flex items-center space-x-1 hover:underline">
-                          <span>Filter Jabatan</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* 3. SPECIALIST JOB ROLES DIRECTORY */}
-          <div className="border border-borderBase-light dark:border-borderBase-dark rounded-xl bg-surface-light dark:bg-surface-dark overflow-hidden shadow-xs">
-            <div className="px-4 py-3.5 border-b border-borderBase-light dark:border-borderBase-dark flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <Briefcase className="w-4 h-4 text-accent" />
-                <h3 className="text-sm font-bold">Katalog Jabatan Spesialis ({filteredRoles.length})</h3>
-                {selectedDeptFilter !== "all" && (
-                  <span className="text-xs text-accent font-medium">
-                    (Difilter: {departments.find((d) => d.id === selectedDeptFilter)?.name || ""})
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                Terhubung ke Algoritma Smart Staffing & Alokasi Otomatis
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border-b border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark font-medium">
-                  <tr>
-                    <th className="py-2.5 px-4 font-mono">Kode</th>
-                    <th className="py-2.5 px-4">Nama Jabatan</th>
-                    <th className="py-2.5 px-4">Divisi</th>
-                    <th className="py-2.5 px-4">Kompetensi & Skills Utama</th>
-                    <th className="py-2.5 px-4">Tanggung Jawab</th>
-                    <th className="py-2.5 px-4 text-right">Agen</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-borderBase-light dark:divide-borderBase-dark">
-                  {filteredRoles.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="hover:bg-surfaceSecondary-light/50 dark:hover:bg-surfaceSecondary-dark/50 transition-colors"
-                    >
-                      <td className="py-3 px-4 font-mono font-semibold text-accent text-[11px] whitespace-nowrap">
-                        {r.code}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-                          {r.name}
-                        </div>
-                        <div className="text-[11px] text-textMuted-light dark:text-textMuted-dark max-w-sm truncate">
-                          {r.description || "Tidak ada deskripsi"}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-textMuted-light dark:text-textMuted-dark whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-mono">
-                          {r.department_name || r.department_id}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1 max-w-md">
-                          {r.skills && r.skills.length > 0 ? (
-                            r.skills.slice(0, 4).map((s, idx) => (
-                              <span
-                                key={idx}
-                                className="px-1.5 py-0.2 rounded text-[10px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light/60 dark:border-borderBase-dark/60 font-mono text-textSecondary-light dark:text-textSecondary-dark"
-                              >
-                                {s}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-textMuted-light dark:text-textMuted-dark text-[10px] italic">
-                              Generalist
-                            </span>
-                          )}
-                          {r.skills && r.skills.length > 4 && (
-                            <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                              +{r.skills.length - 4} lagi
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-[11px] text-textMuted-light dark:text-textMuted-dark max-w-xs truncate">
-                        {r.responsibilities && r.responsibilities.length > 0
-                          ? r.responsibilities.slice(0, 2).join(", ")
-                          : "Standard SDLC Delivery"}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] ${
-                            r.agents_count > 0
-                              ? "bg-status-success/15 text-status-success border border-status-success/30"
-                              : "bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark"
-                          }`}
-                        >
-                          {r.agents_count} Agen
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Modal Actions */}
+            <div className="pt-4 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+              <Link
+                href="/workforce"
+                className="text-xs text-accent hover:underline flex items-center space-x-1.5 font-medium"
+              >
+                <span>Buka Pengaturan Lengkap di Workforce Hub</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+              <Button size="sm" onClick={() => setSelectedAgent(null)}>
+                Tutup
+              </Button>
             </div>
           </div>
         </div>

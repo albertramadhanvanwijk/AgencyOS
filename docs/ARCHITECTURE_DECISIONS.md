@@ -80,3 +80,29 @@
   - Consequential actions generate an immutable `AuditEvent` with actor, action, timestamp, policy basis, and redacted payload.
 * **Consequences**:
   - Guarantees accountability and eliminates unapproved state drift.
+
+---
+
+## ADR-006: GitHub Integration, Worktree Branching, and Subtask Hierarchy
+* **Status**: Accepted
+* **Date**: 2026-10-19
+* **Context**: Multi-agent orchestration requires a seamless version control pipeline, preventing merge conflicts when multiple agents work concurrently, and mirroring Jira-style Development Panels and subtask breakdowns.
+* **Decision**:
+  - **GitHub Repository Lifecycle**:
+    - During project creation, users can choose:
+      1. `auto_create`: AgencyOS calls GitHub REST API v3 to automatically provision a remote repo under the user's account with `.gitignore`, `README.md`, and CI workflow templates.
+      2. `existing`: Links an existing remote repository URL and initializes local tracking.
+      3. `local`: Operates in an offline git repository without pushing upstream.
+  - **Git Branch Worktree Strategy**:
+    - Top-level stories/tasks automatically receive a dedicated working branch: `agencyos/{project_key}/{task_key}`.
+    - Subtasks inherit their parent context and receive targeted child branches: `agencyos/{project_key}/{parent_key}-s{n}`.
+    - Agents work in isolated worktree workspaces (`workspaces/{project_id}/runs/{run_id}`) preventing cross-agent file locks and race conditions.
+  - **Subtask Hierarchy & Development Panel**:
+    - `WorkItem` supports a self-referencing `parent_id` foreign key.
+    - Top-level cards sit on the Scrum Kanban board columns with a subtask completion indicator (`X/Y Subtasks Done`).
+    - Task inspection modal contains a Jira-style **Development Panel** displaying the isolated branch name, 1-click clipboard copy, GitHub Pull Request status, and automated CI check indicators.
+    - Subtasks can be created dynamically via `POST /work-items/{id}/subtasks` and independently assigned to specialized agents with individual story point estimates.
+* **Consequences**:
+  - Eliminates code collision during parallel agent execution.
+  - Transparent traceability from requirement (User Story) to code (Git Branch & PR).
+  - Human operator retains full visibility and approval control prior to merging to `main`.

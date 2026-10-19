@@ -20,6 +20,12 @@ import {
   Sliders,
   Sparkles,
   AlertTriangle,
+  Plus,
+  Trash2,
+  Edit,
+  Check,
+  X,
+  Server
 } from "lucide-react";
 
 interface SystemStatus {
@@ -63,130 +69,261 @@ interface ConnectionTestResult {
   available_models?: string[];
 }
 
+interface LLMConfigItem {
+  id: string;
+  name: string;
+  provider: string;
+  base_url: string;
+  masked_api_key: string;
+  has_api_key: boolean;
+  model: string;
+  is_default: boolean;
+  status: string;
+  health_message: string;
+  available_models: string[];
+}
+
 export default function SettingsPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [adapters, setAdapters] = useState<AdapterInfo[]>([]);
-  const [isLoadingAdapters, setIsLoadingAdapters] = useState(true);
+  const [llms, setLlms] = useState<LLMConfigItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Configuration form state
-  const [baseUrl, setBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai");
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gemini-2.0-flash");
-  const [defaultAdapter, setDefaultAdapter] = useState("MockEngineAdapter");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
+  // Engine adapter choice
+  const [defaultEngineAdapter, setDefaultEngineAdapter] = useState("MockEngineAdapter");
 
-  // Action states
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
-  const [savingConfig, setSavingConfig] = useState(false);
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  // Modal State for Add / Edit LLM
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingLlmId, setEditingLlmId] = useState<string | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formProvider, setFormProvider] = useState("Google Gemini");
+  const [formBaseUrl, setFormBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai");
+  const [formApiKey, setFormApiKey] = useState("");
+  const [formModel, setFormModel] = useState("gemini-2.0-flash");
+  const [formIsDefault, setFormIsDefault] = useState(false);
+  const [formShowKey, setFormShowKey] = useState(false);
+  const [formTestResult, setFormTestResult] = useState<ConnectionTestResult | null>(null);
+  const [formTesting, setFormTesting] = useState(false);
+  const [formSaving, setFormSaving] = useState(false);
 
-  const fetchStatusAndAdapters = async () => {
+  // Specific row action states
+  const [testingId, setTestingId] = useState<string | null>(null);
+
+  const fetchData = async () => {
     try {
-      setIsLoadingAdapters(true);
-      const [statusRes, adaptersRes] = await Promise.all([
+      setIsLoading(true);
+      const [statusRes, adaptersRes, llmsRes] = await Promise.all([
         fetch("http://127.0.0.1:8000/api/v1/system/status"),
         fetch("http://127.0.0.1:8000/api/v1/system/adapters"),
+        fetch("http://127.0.0.1:8000/api/v1/system/llms"),
       ]);
 
       if (statusRes.ok) {
         const statusData: SystemStatus = await statusRes.json();
         setStatus(statusData);
         if (statusData.engine_adapter_default) {
-          setDefaultAdapter(statusData.engine_adapter_default);
+          setDefaultEngineAdapter(statusData.engine_adapter_default);
         }
       }
 
       if (adaptersRes.ok) {
-        const adaptersData: AdapterInfo[] = await adaptersRes.json();
-        setAdapters(adaptersData);
+        setAdapters(await adaptersRes.json());
+      }
 
-        const liveAdapter = adaptersData.find((a) => a.name === "LiveLLMEngineAdapter");
-        if (liveAdapter?.capabilities) {
-          if (liveAdapter.capabilities.current_base_url) {
-            setBaseUrl(liveAdapter.capabilities.current_base_url);
-          }
-          if (liveAdapter.capabilities.current_model) {
-            setModel(liveAdapter.capabilities.current_model);
-          }
-          if (liveAdapter.capabilities.supported_models && liveAdapter.capabilities.supported_models.length > 0) {
-            setDiscoveredModels(liveAdapter.capabilities.supported_models);
-          }
-        }
+      if (llmsRes.ok) {
+        setLlms(await llmsRes.json());
       }
     } catch {
       // Offline fallback handling
     } finally {
-      setIsLoadingAdapters(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatusAndAdapters();
+    fetchData();
   }, []);
 
-  const handleTestConnection = async () => {
+  const handleOpenAddModal = () => {
+    setEditingLlmId(null);
+    setFormName("Google Gemini (Antigravity)");
+    setFormProvider("Google Gemini");
+    setFormBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
+    setFormApiKey("");
+    setFormModel("gemini-2.0-flash");
+    setFormIsDefault(llms.length === 0);
+    setFormShowKey(false);
+    setFormTestResult(null);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (item: LLMConfigItem) => {
+    setEditingLlmId(item.id);
+    setFormName(item.name);
+    setFormProvider(item.provider);
+    setFormBaseUrl(item.base_url);
+    setFormApiKey(""); // Leave empty unless operator wants to overwrite
+    setFormModel(item.model);
+    setFormIsDefault(item.is_default);
+    setFormShowKey(false);
+    setFormTestResult(null);
+    setIsModalOpen(true);
+  };
+
+  const handleApplyPreset = (provider: string) => {
+    setFormProvider(provider);
+    setFormTestResult(null);
+    if (provider === "Google Gemini") {
+      setFormName("Google Gemini (Antigravity)");
+      setFormBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
+      setFormModel("gemini-2.0-flash");
+    } else if (provider === "OpenAI") {
+      setFormName("OpenAI Official");
+      setFormBaseUrl("https://api.openai.com/v1");
+      setFormModel("gpt-4o-mini");
+    } else if (provider === "OpenRouter") {
+      setFormName("OpenRouter Hub");
+      setFormBaseUrl("https://openrouter.ai/api/v1");
+      setFormModel("google/gemini-2.0-flash-exp:free");
+    } else if (provider === "Ollama Local") {
+      setFormName("Local Ollama");
+      setFormBaseUrl("http://localhost:11434/v1");
+      setFormModel("llama3");
+    }
+  };
+
+  const handleModalTestConnection = async () => {
     try {
-      setTestingConnection(true);
-      setTestResult(null);
-      setSaveSuccessMessage(null);
+      setFormTesting(true);
+      setFormTestResult(null);
 
       const res = await fetch("http://127.0.0.1:8000/api/v1/system/adapters/test-connection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          api_key: apiKey.trim() || undefined,
-          base_url: baseUrl.trim() || undefined,
-          model: model.trim() || undefined,
+          api_key: formApiKey.trim() || undefined,
+          base_url: formBaseUrl.trim() || undefined,
+          model: formModel.trim() || undefined,
         }),
       });
 
       const data: ConnectionTestResult = await res.json();
-      setTestResult(data);
-      if (data.available_models && data.available_models.length > 0) {
-        setDiscoveredModels(data.available_models);
-      }
+      setFormTestResult(data);
     } catch (err: unknown) {
-      setTestResult({
+      setFormTestResult({
         status: "error",
-        message: err instanceof Error ? err.message : "Gagal menghubungi endpoint sistem.",
+        message: err instanceof Error ? err.message : "Gagal menghubungi endpoint provider.",
       });
     } finally {
-      setTestingConnection(false);
+      setFormTesting(false);
     }
   };
 
-  const handleSaveConfiguration = async (e: React.FormEvent) => {
+  const handleSaveLlm = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setSavingConfig(true);
-      setSaveSuccessMessage(null);
+      setFormSaving(true);
+      const payload = {
+        id: editingLlmId || undefined,
+        name: formName.trim(),
+        provider: formProvider,
+        base_url: formBaseUrl.trim(),
+        api_key: formApiKey.trim() || undefined,
+        model: formModel.trim(),
+        is_default: formIsDefault,
+      };
 
-      const res = await fetch("http://127.0.0.1:8000/api/v1/system/adapters/configure", {
+      const res = await fetch("http://127.0.0.1:8000/api/v1/system/llms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: apiKey.trim() || undefined,
-          base_url: baseUrl.trim() || undefined,
-          model: model.trim() || undefined,
-          default_adapter: defaultAdapter,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
-        throw new Error("Gagal menyimpan konfigurasi adapter.");
+        throw new Error("Gagal menyimpan konfigurasi LLM.");
       }
 
       const data = await res.json();
-      setSaveSuccessMessage("Konfigurasi live engine berhasil disimpan dan aktif.");
-      if (data.adapters) {
-        setAdapters(data.adapters);
+      if (data.llms) {
+        setLlms(data.llms);
       }
+      setIsModalOpen(false);
+      await fetchData();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Error saving configuration");
+      alert(err instanceof Error ? err.message : "Error saving LLM config");
     } finally {
-      setSavingConfig(false);
+      setFormSaving(false);
+    }
+  };
+
+  const handleTestSpecificLlm = async (id: string) => {
+    try {
+      setTestingId(id);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}/test`, {
+        method: "POST",
+      });
+      const data: ConnectionTestResult = await res.json();
+      setLlms((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status: data.status,
+                health_message: data.message,
+                available_models: data.available_models || item.available_models,
+              }
+            : item
+        )
+      );
+    } catch {
+      // ignore
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  const handleSetDefaultLlm = async (id: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}/set-default`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLlms(data.llms);
+        await fetchData();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDeleteLlm = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus konfigurasi LLM ini?")) return;
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLlms(data.llms);
+        await fetchData();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleToggleDefaultEngineAdapter = async (adapterName: string) => {
+    try {
+      setDefaultEngineAdapter(adapterName);
+      await fetch("http://127.0.0.1:8000/api/v1/system/adapters/configure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_adapter: adapterName }),
+      });
+      await fetchData();
+    } catch {
+      // ignore
     }
   };
 
@@ -194,411 +331,250 @@ export default function SettingsPage() {
     <AppShell>
       <PageHeader
         title="Settings & System Governance"
-        description="Engine adapter statuses, repository workspace isolation, policy thresholds, and environment configuration."
+        description="Kelola konfigurasi multi-LLM, status adapter engine, workspace canonical isolation, dan pengaturan eksekusi agent."
         breadcrumbs={[
           { label: "Overview", href: "/" },
           { label: "Settings" },
         ]}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (2 Cols): Live Engine Configuration */}
-        <div className="lg:col-span-2 space-y-6">
-          <form
-            onSubmit={handleSaveConfiguration}
-            className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark p-5 space-y-5"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div className="flex items-center space-x-2">
-                <Sliders className="w-5 h-5 text-accent" />
-                <div>
-                  <h2 className="text-sm font-semibold">Live AI Execution Engine Configuration</h2>
-                  <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-                    Konfigurasi engine LLM untuk eksekusi kode riil di sandbox terisolasi. Mendukung penuh Google Gemini & Antigravity.
-                  </p>
-                </div>
-              </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
-                Gemini & OpenAI Ready
+      <div className="space-y-6">
+        {/* Antigravity & Gemini Callout Notice */}
+        <div className="p-4 rounded-md bg-accent/10 border border-accent/25 flex items-start justify-between text-xs">
+          <div className="flex items-start space-x-3">
+            <Sparkles className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-semibold text-accent text-sm block">
+                Google Gemini & Antigravity Native Engine
               </span>
+              <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed max-w-4xl">
+                AgencyOS dirancang untuk berjalan sinergis dengan <strong>Google Antigravity</strong> dan model-model <strong>Google Gemini (2.0 Flash, 2.5 Pro, 1.5 Pro)</strong>. Anda dapat menambahkan beberapa koneksi API Key sekaligus, menguji apakah tier akun Anda mendukung model tertentu, serta menetapkan model default untuk workforce agent.
+              </p>
             </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={fetchData}
+            isLoading={isLoading}
+            leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+          >
+            Refresh
+          </Button>
+        </div>
 
-            {/* Antigravity & Gemini Highlight Banner */}
-            <div className="p-3.5 rounded-md bg-accent/10 border border-accent/25 flex items-start space-x-3 text-xs">
-              <Sparkles className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-semibold text-accent block">Google Gemini & Antigravity Native Engine</span>
-                <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
-                  AgencyOS terintegrasi dengan <strong>Google Gemini 2.0 Flash & 2.5 Pro</strong> via OpenAI-compatible endpoint Google (<code className="font-mono text-[11px] text-accent">https://generativelanguage.googleapis.com/v1beta/openai</code>).
-                  Cukup masukkan Google API Key dari Google AI Studio atau set <code className="font-mono text-[11px] text-accent">GEMINI_API_KEY</code> di file <code className="font-mono text-[11px]">.env</code>.
+        {/* Section 1: Connected LLMs Table / Card Grid */}
+        <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
+            <div className="flex items-center space-x-2.5">
+              <Server className="w-5 h-5 text-accent" />
+              <div>
+                <h2 className="text-sm font-semibold">LLM Terhubung & Konfigurasi Provider</h2>
+                <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+                  Daftar provider & model AI yang terhubung. Agen akan mengeksekusi task menggunakan koneksi yang aktif.
                 </p>
               </div>
             </div>
 
-            {/* Provider Base URL */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium flex items-center space-x-1.5">
-                <Globe className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
-                <span>Base URL Endpoint</span>
-              </label>
-              <input
-                type="text"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
-                className="w-full text-xs font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
-              />
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
-                <span>Quick Preset:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
-                    setModel("gemini-2.0-flash");
-                  }}
-                  className="px-2 py-0.5 rounded bg-accent/15 text-accent border border-accent/40 font-medium"
-                >
-                  ⚡ Google Gemini (Recommended)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBaseUrl("https://api.openai.com/v1");
-                    setModel("gpt-4o-mini");
-                  }}
-                  className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
-                >
-                  OpenAI
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBaseUrl("https://openrouter.ai/api/v1");
-                    setModel("google/gemini-2.0-flash-exp:free");
-                  }}
-                  className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
-                >
-                  OpenRouter
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBaseUrl("http://localhost:11434/v1");
-                    setModel("llama3");
-                  }}
-                  className="px-1.5 py-0.5 rounded hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark"
-                >
-                  Ollama Local
-                </button>
-              </div>
-            </div>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handleOpenAddModal}
+              leftIcon={<Plus className="w-3.5 h-3.5" />}
+            >
+              + Tambah LLM Baru
+            </Button>
+          </div>
 
-            {/* API Key */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium flex items-center justify-between">
-                <span className="flex items-center space-x-1.5">
-                  <Key className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
-                  <span>API Key</span>
-                </span>
-                <span className="text-[10px] text-[#209961] flex items-center gap-1">
-                  <Shield className="w-3 h-3" />
-                  Redacted & Memory-Only (Never committed)
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="AIzaSy•••••••••••••••••••• (Google Key) atau sk-••••"
-                  className="w-full text-xs font-mono px-3 py-2 pr-10 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
-                >
-                  {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
-                Masukkan Google Gemini API Key dari AI Studio, atau kosongkan bila menggunakan local endpoint (Ollama/vLLM).
-              </p>
-            </div>
+          {/* Connected LLMs List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+            {llms.map((item) => {
+              let badgeVariant: "success" | "warning" | "danger" | "neutral" = "neutral";
+              let badgeLabel = "Belum Teruji";
 
-            {/* Model Selection */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium flex items-center space-x-1.5">
-                <Bot className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
-                <span>Target Model LLM</span>
-              </label>
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="gemini-2.0-flash"
-                className="w-full text-xs font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
-              />
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-textMuted-light dark:text-textMuted-dark pt-1">
-                <span>{discoveredModels.length > 0 ? "Model Tersedia (Auto-Discovered):" : "Model Presets:"}</span>
-                {(discoveredModels.length > 0
-                  ? discoveredModels
-                  : [
-                      "gemini-2.0-flash",
-                      "gemini-2.5-pro",
-                      "gemini-2.5-flash",
-                      "gemini-1.5-pro",
-                      "gpt-4o-mini",
-                      "gpt-4o",
-                      "claude-3-5-sonnet",
-                      "qwen-2.5-coder-32b",
-                    ]
-                ).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setModel(m)}
-                    className={`px-1.5 py-0.5 rounded border transition-colors ${
-                      model === m
-                        ? "bg-accent/15 text-accent border-accent/40 font-medium"
-                        : "hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
+              if (item.status === "verified") {
+                badgeVariant = "success";
+                badgeLabel = "Verified (Ready)";
+              } else if (item.status === "warning") {
+                badgeVariant = "warning";
+                badgeLabel = "Tier Dibatasi / Model Terbatas";
+              } else if (item.status === "error") {
+                badgeVariant = "danger";
+                badgeLabel = "Connection Error";
+              } else if (item.status === "not_configured") {
+                badgeVariant = "neutral";
+                badgeLabel = "Not Configured";
+              }
 
-            {/* Default Engine Switcher */}
-            <div className="space-y-1.5 pt-2 border-t border-borderBase-light dark:border-borderBase-dark">
-              <label className="text-xs font-medium block">Default Execution Adapter</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <label
-                  className={`flex items-start p-3 rounded border cursor-pointer transition-colors ${
-                    defaultAdapter === "MockEngineAdapter"
-                      ? "border-accent bg-accent/5 dark:bg-accent/10"
+              return (
+                <div
+                  key={item.id}
+                  className={`p-4 rounded-md border flex flex-col justify-between transition-all ${
+                    item.is_default
+                      ? "border-accent/40 bg-accent/5 dark:bg-accent/10 shadow-xs"
                       : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="defaultAdapter"
-                    value="MockEngineAdapter"
-                    checked={defaultAdapter === "MockEngineAdapter"}
-                    onChange={(e) => setDefaultAdapter(e.target.value)}
-                    className="mt-0.5 mr-2.5 accent-accent"
-                  />
-                  <div>
-                    <span className="text-xs font-semibold block">MockEngineAdapter</span>
-                    <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark block">
-                      Deterministic offline simulation run (Safe for dev & CI tests).
-                    </span>
-                  </div>
-                </label>
+                  <div className="space-y-2.5">
+                    {/* Header Row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Bot className="w-4 h-4 text-accent shrink-0" />
+                          <span className="font-semibold text-xs truncate max-w-[170px]" title={item.name}>
+                            {item.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block">
+                          Provider: {item.provider}
+                        </span>
+                      </div>
 
-                <label
-                  className={`flex items-start p-3 rounded border cursor-pointer transition-colors ${
-                    defaultAdapter === "LiveLLMEngineAdapter"
-                      ? "border-accent bg-accent/5 dark:bg-accent/10"
-                      : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="defaultAdapter"
-                    value="LiveLLMEngineAdapter"
-                    checked={defaultAdapter === "LiveLLMEngineAdapter"}
-                    onChange={(e) => setDefaultAdapter(e.target.value)}
-                    className="mt-0.5 mr-2.5 accent-accent"
-                  />
-                  <div>
-                    <span className="text-xs font-semibold block">LiveLLMEngineAdapter</span>
-                    <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark block">
-                      Actual LLM API code generation in isolated run workspaces.
-                    </span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Test Connection Banner */}
-            {testResult && (
-              <div
-                className={`p-3.5 rounded border text-xs flex flex-col space-y-2.5 ${
-                  testResult.status === "verified"
-                    ? "bg-[#16794B]/10 border-[#16794B]/30 text-status-success dark:text-[#209961]"
-                    : testResult.status === "warning"
-                    ? "bg-[#9A6700]/10 border-[#9A6700]/30 text-status-warning dark:text-[#C78B14]"
-                    : testResult.status === "not_configured"
-                    ? "bg-surfaceSecondary-light border-borderBase-light text-textMuted-light dark:bg-surfaceSecondary-dark dark:border-borderBase-dark dark:text-textMuted-dark"
-                    : "bg-[#C23934]/10 border-[#C23934]/30 text-status-danger dark:text-[#D94843]"
-                }`}
-              >
-                <div className="flex items-start space-x-2.5">
-                  {testResult.status === "verified" ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  ) : testResult.status === "warning" ? (
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  )}
-                  <div className="space-y-1">
-                    <div className="font-semibold">
-                      {testResult.status === "verified" && "✓ Koneksi & Model Terverifikasi (Siap Digunakan)"}
-                      {testResult.status === "warning" && "⚠️ API Key Valid — Model Terbatas / Perlu Tier Lain"}
-                      {testResult.status === "error" && "✕ Koneksi Gagal (Periksa API Key / Endpoint)"}
-                      {testResult.status === "not_configured" && "Informasi: Belum Dikonfigurasi"}
-                    </div>
-                    <div className="text-[11px] leading-relaxed opacity-90">{testResult.message}</div>
-                  </div>
-                </div>
-
-                {/* Available models picker if present */}
-                {testResult.available_models && testResult.available_models.length > 0 && (
-                  <div className="pt-2 border-t border-current/20 space-y-1.5">
-                    <div className="text-[11px] font-semibold flex items-center justify-between">
-                      <span>Pilih model yang tersedia untuk API Key Anda:</span>
-                      <span className="font-mono text-[10px] opacity-75">{testResult.available_models.length} model aktif</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto pt-1">
-                      {testResult.available_models.map((availModel) => (
-                        <button
-                          key={availModel}
-                          type="button"
-                          onClick={() => setModel(availModel)}
-                          className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${
-                            model === availModel
-                              ? "bg-accent text-white border-accent shadow-xs"
-                              : "bg-surface-light dark:bg-surface-dark border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent"
-                          }`}
-                        >
-                          {availModel}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Save Success Banner */}
-            {saveSuccessMessage && (
-              <div className="p-3 rounded border text-xs flex items-center space-x-2.5 bg-[#16794B]/10 border-[#16794B]/30 text-status-success dark:text-[#209961]">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{saveSuccessMessage}</span>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center justify-between pt-2 border-t border-borderBase-light dark:border-borderBase-dark">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleTestConnection}
-                isLoading={testingConnection}
-                leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
-              >
-                Test Connection
-              </Button>
-
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                isLoading={savingConfig}
-                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-              >
-                Save Engine Configuration
-              </Button>
-            </div>
-          </form>
-        </div>
-
-        {/* Right Column: Registered Adapters & Workspace Boundary */}
-        <div className="space-y-6">
-          {/* Registered Engine Adapters */}
-          <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Cpu className="w-4 h-4 text-accent" />
-                <h2 className="text-sm font-semibold">Engine Registry</h2>
-              </div>
-              <button
-                type="button"
-                onClick={fetchStatusAndAdapters}
-                className="text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark p-1"
-                title="Refresh adapters"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAdapters ? "animate-spin" : ""}`} />
-              </button>
-            </div>
-
-            <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-              Registry engine aktif mengikuti Honesty Rule (Simulated vs Verified).
-            </p>
-
-            <div className="space-y-3 pt-1 text-xs">
-              {adapters.map((adapter) => {
-                const isLive = !adapter.is_simulated;
-                let badgeVariant: "success" | "warning" | "danger" | "neutral" | "simulated" = "neutral";
-                let badgeLabel = "Not Configured";
-
-                if (adapter.is_simulated) {
-                  badgeVariant = "simulated";
-                  badgeLabel = "Verified (Simulated)";
-                } else if (adapter.status === "verified") {
-                  badgeVariant = "success";
-                  badgeLabel = "Verified (Live)";
-                } else if (adapter.status === "error") {
-                  badgeVariant = "danger";
-                  badgeLabel = "Connection Error";
-                }
-
-                return (
-                  <div
-                    key={adapter.name}
-                    className={`p-3 rounded border ${
-                      adapter.is_default
-                        ? "border-accent/40 bg-accent/5 dark:bg-accent/10"
-                        : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold block">{adapter.name}</span>
-                        {adapter.is_default && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent text-white">
-                            DEFAULT
+                      <div className="flex flex-col items-end gap-1">
+                        <StatusBadge variant={badgeVariant} label={badgeLabel} size="sm" />
+                        {item.is_default && (
+                          <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-accent text-white tracking-wider">
+                            ACTIVE DEFAULT
                           </span>
                         )}
                       </div>
-                      <StatusBadge variant={badgeVariant} label={badgeLabel} />
                     </div>
 
-                    <div className="text-[11px] text-textMuted-light dark:text-textMuted-dark space-y-1">
-                      <div>
-                        Mode:{" "}
-                        <span className="font-mono text-textPrimary-light dark:text-textPrimary-dark">
-                          {adapter.is_simulated ? "Deterministic Offline" : "Live API Remote"}
+                    {/* Meta info */}
+                    <div className="p-2.5 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark space-y-1.5 text-[11px] font-mono">
+                      <div className="flex items-center justify-between">
+                        <span className="text-textMuted-light dark:text-textMuted-dark">Target Model:</span>
+                        <span className="text-accent font-semibold">{item.model}</span>
+                      </div>
+                      <div className="flex items-center justify-between truncate" title={item.base_url}>
+                        <span className="text-textMuted-light dark:text-textMuted-dark">Endpoint:</span>
+                        <span className="truncate max-w-[140px] text-textPrimary-light dark:text-textPrimary-dark">
+                          {item.base_url.replace("https://", "")}
                         </span>
                       </div>
-                      {isLive && adapter.capabilities.current_model && (
-                        <div>
-                          Model:{" "}
-                          <span className="font-mono text-accent">
-                            {adapter.capabilities.current_model}
-                          </span>
-                        </div>
-                      )}
-                      <div className="text-[10px] opacity-75">
-                        Capabilities: Diff, Tests, Quality Gates, Isolation
+                      <div className="flex items-center justify-between">
+                        <span className="text-textMuted-light dark:text-textMuted-dark">API Key:</span>
+                        <span className="text-textPrimary-light dark:text-textPrimary-dark">
+                          {item.has_api_key ? item.masked_api_key : <span className="text-textMuted-light italic">Belum diinput</span>}
+                        </span>
                       </div>
                     </div>
+
+                    {/* Health Note */}
+                    {item.health_message && (
+                      <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-snug line-clamp-2">
+                        {item.health_message}
+                      </p>
+                    )}
                   </div>
-                );
-              })}
+
+                  {/* Actions Bar */}
+                  <div className="flex items-center justify-between pt-3 mt-3 border-t border-borderBase-light dark:border-borderBase-dark text-xs gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleTestSpecificLlm(item.id)}
+                      isLoading={testingId === item.id}
+                      className="text-[11px] h-7 px-2"
+                      leftIcon={<RefreshCw className="w-3 h-3" />}
+                    >
+                      Test
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {!item.is_default && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultLlm(item.id)}
+                          className="px-2 py-1 rounded text-[11px] font-medium border border-borderBase-light dark:border-borderBase-dark hover:border-accent text-accent hover:bg-accent/10 transition-colors"
+                        >
+                          Set Default
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(item)}
+                        className="p-1.5 rounded hover:bg-surface-light dark:hover:bg-surface-dark text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                        title="Edit LLM"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+
+                      {llms.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLlm(item.id)}
+                          className="p-1.5 rounded hover:bg-status-danger/10 text-textMuted-light dark:text-textMuted-dark hover:text-status-danger transition-colors"
+                          title="Hapus LLM"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Section 2: Platform Execution Engine & Isolation Boundary */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Engine Adapters Choice */}
+          <div className="border border-borderBase-light dark:border-borderBase-dark rounded-md bg-surface-light dark:bg-surface-dark p-5 space-y-4">
+            <div className="flex items-center space-x-2">
+              <Cpu className="w-4 h-4 text-accent" />
+              <h2 className="text-sm font-semibold">Platform Engine Registry & Default Execution Mode</h2>
+            </div>
+            <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
+              Engine Registry adalah lapisan eksekusi inti AgencyOS yang mengatur apakah task dijalankan via simulasi deterministik aman (Mock) atau kode nyata LLM (Live).
+            </p>
+
+            <div className="space-y-3 pt-1 text-xs">
+              <div
+                onClick={() => handleToggleDefaultEngineAdapter("MockEngineAdapter")}
+                className={`p-3.5 rounded border cursor-pointer transition-all flex items-start justify-between ${
+                  defaultEngineAdapter === "MockEngineAdapter"
+                    ? "border-accent bg-accent/5 dark:bg-accent/10"
+                    : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark opacity-75 hover:opacity-100"
+                }`}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs">MockEngineAdapter</span>
+                    <StatusBadge variant="simulated" label="Verified (Simulation)" size="sm" />
+                  </div>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Runner offline deterministik. Cocok untuk testing alur scrum dan preview tanpa memakan quota API.
+                  </p>
+                </div>
+                {defaultEngineAdapter === "MockEngineAdapter" && (
+                  <Check className="w-4 h-4 text-accent shrink-0 mt-1" />
+                )}
+              </div>
+
+              <div
+                onClick={() => handleToggleDefaultEngineAdapter("LiveLLMEngineAdapter")}
+                className={`p-3.5 rounded border cursor-pointer transition-all flex items-start justify-between ${
+                  defaultEngineAdapter === "LiveLLMEngineAdapter"
+                    ? "border-accent bg-accent/5 dark:bg-accent/10"
+                    : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark opacity-75 hover:opacity-100"
+                }`}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs">LiveLLMEngineAdapter</span>
+                    <StatusBadge variant="success" label="Live LLM Sandbox" size="sm" />
+                  </div>
+                  <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                    Runner eksekusi riil. Memanggil provider LLM terhubung, memodifikasi berkas di isolated workspace, dan mengecek quality gates.
+                  </p>
+                </div>
+                {defaultEngineAdapter === "LiveLLMEngineAdapter" && (
+                  <Check className="w-4 h-4 text-accent shrink-0 mt-1" />
+                )}
+              </div>
             </div>
           </div>
 
@@ -609,7 +585,7 @@ export default function SettingsPage() {
               <h2 className="text-sm font-semibold">Workspace Isolation Boundary</h2>
             </div>
             <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
-              Setiap execution run terisolasi di path canonical untuk mencegah file bleed antar task.
+              Setiap execution run terisolasi di path canonical workspace untuk mencegah kebocoran berkas antar agent.
             </p>
 
             <div className="space-y-3 pt-2 border-t border-borderBase-light dark:border-borderBase-dark text-xs">
@@ -617,16 +593,16 @@ export default function SettingsPage() {
                 <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">
                   Workspace Canonical Root:
                 </span>
-                <div className="font-mono text-[11px] p-2 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-accent">
+                <div className="font-mono text-[11px] p-2.5 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark text-accent">
                   {status?.workspace_root || "./workspaces"}
                 </div>
               </div>
 
               <div className="space-y-1">
                 <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">
-                  Environment & Debug:
+                  Environment & Mode:
                 </span>
-                <div className="font-mono text-[11px] p-2 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark">
+                <div className="font-mono text-[11px] p-2.5 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark">
                   {status?.environment || "development"} (Debug: {status?.debug ? "True" : "False"})
                 </div>
               </div>
@@ -634,6 +610,258 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal: Tambah / Edit Konfigurasi LLM */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg shadow-xl w-full max-w-xl my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-borderBase-light dark:border-borderBase-dark flex items-center justify-between bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/40">
+              <div className="flex items-center space-x-2">
+                <Bot className="w-5 h-5 text-accent" />
+                <h3 className="font-semibold text-sm">
+                  {editingLlmId ? "Edit Konfigurasi LLM" : "Tambah Konfigurasi LLM Baru"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveLlm} className="p-5 space-y-4 text-xs">
+              {/* Quick Presets */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium block">Pilih Preset Cepat Provider:</label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset("Google Gemini")}
+                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "Google Gemini"
+                        ? "bg-accent/15 text-accent border-accent"
+                        : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
+                    }`}
+                  >
+                    ⚡ Google Gemini (Antigravity)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset("OpenAI")}
+                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "OpenAI"
+                        ? "bg-accent/15 text-accent border-accent"
+                        : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
+                    }`}
+                  >
+                    OpenAI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset("OpenRouter")}
+                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "OpenRouter"
+                        ? "bg-accent/15 text-accent border-accent"
+                        : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
+                    }`}
+                  >
+                    OpenRouter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPreset("Ollama Local")}
+                    className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors ${
+                      formProvider === "Ollama Local"
+                        ? "bg-accent/15 text-accent border-accent"
+                        : "border-borderBase-light dark:border-borderBase-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark"
+                    }`}
+                  >
+                    Ollama Local
+                  </button>
+                </div>
+              </div>
+
+              {/* Name */}
+              <div className="space-y-1">
+                <label className="font-medium">Nama Koneksi LLM:</label>
+                <input
+                  type="text"
+                  required
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Misal: Google Gemini 2.0 Flash (Primary)"
+                  className="w-full px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
+                />
+              </div>
+
+              {/* Base URL */}
+              <div className="space-y-1">
+                <label className="font-medium flex items-center space-x-1.5">
+                  <Globe className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
+                  <span>Base URL Endpoint:</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formBaseUrl}
+                  onChange={(e) => setFormBaseUrl(e.target.value)}
+                  placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
+                  className="w-full font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
+                />
+              </div>
+
+              {/* API Key */}
+              <div className="space-y-1">
+                <label className="font-medium flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <Key className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
+                    <span>API Key:</span>
+                  </span>
+                  <span className="text-[10px] text-[#209961] flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    Memory-Only / Redacted
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={formShowKey ? "text" : "password"}
+                    value={formApiKey}
+                    onChange={(e) => setFormApiKey(e.target.value)}
+                    placeholder={editingLlmId ? "Kosongkan bila tidak ingin mengubah API key tersimpan" : "AIzaSy•••••••• atau sk-••••••••"}
+                    className="w-full font-mono px-3 py-2 pr-10 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFormShowKey(!formShowKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                  >
+                    {formShowKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Model */}
+              <div className="space-y-1">
+                <label className="font-medium flex items-center space-x-1.5">
+                  <Bot className="w-3.5 h-3.5 text-textMuted-light dark:text-textMuted-dark" />
+                  <span>Model Target:</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formModel}
+                  onChange={(e) => setFormModel(e.target.value)}
+                  placeholder="gemini-2.0-flash"
+                  className="w-full font-mono px-3 py-2 rounded border border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:border-accent"
+                />
+              </div>
+
+              {/* Default switch */}
+              <label className="flex items-center space-x-2 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formIsDefault}
+                  onChange={(e) => setFormIsDefault(e.target.checked)}
+                  className="accent-accent rounded"
+                />
+                <span className="font-medium">Jadikan sebagai Active Default LLM untuk agen</span>
+              </label>
+
+              {/* Test Result Inside Modal */}
+              {formTestResult && (
+                <div
+                  className={`p-3 rounded border text-xs flex flex-col space-y-2 ${
+                    formTestResult.status === "verified"
+                      ? "bg-[#16794B]/10 border-[#16794B]/30 text-status-success dark:text-[#209961]"
+                      : formTestResult.status === "warning"
+                      ? "bg-[#9A6700]/10 border-[#9A6700]/30 text-status-warning dark:text-[#C78B14]"
+                      : "bg-[#C23934]/10 border-[#C23934]/30 text-status-danger dark:text-[#D94843]"
+                  }`}
+                >
+                  <div className="flex items-start space-x-2">
+                    {formTestResult.status === "verified" ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : formTestResult.status === "warning" ? (
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <span className="font-semibold block">
+                        {formTestResult.status === "verified" && "✓ Koneksi & Model Terverifikasi!"}
+                        {formTestResult.status === "warning" && "⚠️ API Key Valid — Model Terbatas"}
+                        {formTestResult.status === "error" && "✕ Autentikasi / Koneksi Gagal"}
+                      </span>
+                      <p className="text-[11px] leading-relaxed opacity-90">{formTestResult.message}</p>
+                    </div>
+                  </div>
+
+                  {/* Auto-discovered model suggestions */}
+                  {formTestResult.available_models && formTestResult.available_models.length > 0 && (
+                    <div className="pt-2 border-t border-current/20 space-y-1">
+                      <span className="text-[10px] font-semibold block">Model yang aktif untuk akun Anda (klik untuk memilih):</span>
+                      <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pt-0.5">
+                        {formTestResult.available_models.map((availM) => (
+                          <button
+                            key={availM}
+                            type="button"
+                            onClick={() => setFormModel(availM)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                              formModel === availM
+                                ? "bg-accent text-white border-accent"
+                                : "bg-surface-light dark:bg-surface-dark border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark"
+                            }`}
+                          >
+                            {availM}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-between pt-3 border-t border-borderBase-light dark:border-borderBase-dark">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleModalTestConnection}
+                  isLoading={formTesting}
+                  leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                >
+                  Uji Koneksi
+                </Button>
+
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsModalOpen(false)}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    isLoading={formSaving}
+                    leftIcon={<Check className="w-3.5 h-3.5" />}
+                  >
+                    Simpan Konfigurasi
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

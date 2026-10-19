@@ -94,3 +94,68 @@ def configure_adapter(payload: ConfigureAdapterIn):
         "message": "Engine adapter configuration updated successfully.",
         "adapters": list_adapters_info()
     }
+
+class LLMConfigIn(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    provider: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    is_default: Optional[bool] = False
+
+@router.get("/system/llms")
+def get_system_llms():
+    """Returns list of all configured LLM providers and connections."""
+    return live_adapter.list_llm_configs()
+
+@router.post("/system/llms")
+def create_or_update_llm(payload: LLMConfigIn):
+    """Adds or updates an LLM provider connection and runs validation check."""
+    item = live_adapter.add_or_update_llm(payload.model_dump(exclude_unset=True))
+    return {
+        "status": "ok",
+        "message": f"LLM '{item.get('name')}' berhasil disimpan.",
+        "item": item,
+        "llms": live_adapter.list_llm_configs()
+    }
+
+@router.post("/system/llms/{llm_id}/test")
+def test_specific_llm(llm_id: str):
+    """Tests connection specifically for a configured LLM."""
+    if llm_id not in live_adapter._llm_configs:
+        raise HTTPException(status_code=404, detail="LLM configuration not found.")
+    target = live_adapter._llm_configs[llm_id]
+    result = live_adapter.health_check(
+        api_key=target.get("api_key"),
+        base_url=target.get("base_url"),
+        model=target.get("model")
+    )
+    target["status"] = result.get("status", "error")
+    target["health_message"] = result.get("message", "")
+    target["available_models"] = result.get("available_models", [])
+    return result
+
+@router.post("/system/llms/{llm_id}/set-default")
+def set_default_llm_endpoint(llm_id: str):
+    """Sets the given LLM as the active default model."""
+    success = live_adapter.set_default_llm(llm_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="LLM configuration not found.")
+    return {
+        "status": "ok",
+        "message": "LLM default berhasil diubah.",
+        "llms": live_adapter.list_llm_configs()
+    }
+
+@router.delete("/system/llms/{llm_id}")
+def delete_llm_endpoint(llm_id: str):
+    """Deletes an LLM configuration."""
+    success = live_adapter.delete_llm(llm_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="LLM configuration not found.")
+    return {
+        "status": "ok",
+        "message": "LLM berhasil dihapus.",
+        "llms": live_adapter.list_llm_configs()
+    }

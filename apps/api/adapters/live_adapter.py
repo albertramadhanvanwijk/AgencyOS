@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,52 @@ class LiveLLMEngineAdapter(EngineAdapter):
         self._model = model or os.environ.get("LIVE_ENGINE_MODEL") or settings.LIVE_ENGINE_MODEL
         self._discovered_models: list[str] = []
 
+        # Multi-provider LLM Configuration Profiles
+        self._llm_configs: dict[str, dict[str, Any]] = {
+            "gemini-default": {
+                "id": "gemini-default",
+                "name": "Google Gemini (Antigravity)",
+                "provider": "Google Gemini",
+                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                "api_key": self._api_key,
+                "model": "gemini-2.0-flash",
+                "is_default": True,
+                "status": "not_configured" if not self._api_key else "verified",
+                "health_message": "Google Gemini API via Google AI Studio." if self._api_key else "API key belum dikonfigurasi.",
+                "available_models": [
+                    "gemini-2.0-flash",
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash",
+                    "gemini-1.5-pro",
+                    "gemini-1.5-flash",
+                ]
+            },
+            "openai-default": {
+                "id": "openai-default",
+                "name": "OpenAI Official Gateway",
+                "provider": "OpenAI",
+                "base_url": "https://api.openai.com/v1",
+                "api_key": None,
+                "model": "gpt-4o-mini",
+                "is_default": False,
+                "status": "not_configured",
+                "health_message": "API key belum dikonfigurasi.",
+                "available_models": ["gpt-4o-mini", "gpt-4o"]
+            },
+            "ollama-local": {
+                "id": "ollama-local",
+                "name": "Local Ollama Gateway",
+                "provider": "Ollama Local",
+                "base_url": "http://localhost:11434/v1",
+                "api_key": None,
+                "model": "llama3",
+                "is_default": False,
+                "status": "not_configured",
+                "health_message": "Endpoint lokal untuk offline inference.",
+                "available_models": ["llama3", "qwen2.5-coder", "deepseek-coder"]
+            }
+        }
+
     @property
     def adapter_name(self) -> str:
         return "LiveLLMEngineAdapter"
@@ -72,6 +119,108 @@ class LiveLLMEngineAdapter(EngineAdapter):
             self._base_url = base_url.strip().rstrip("/")
         if model is not None:
             self._model = model.strip()
+
+        # Sync active default item in _llm_configs
+        for item in self._llm_configs.values():
+            if item.get("is_default"):
+                if api_key is not None:
+                    item["api_key"] = self._api_key
+                if base_url is not None:
+                    item["base_url"] = self._base_url
+                if model is not None:
+                    item["model"] = self._model
+
+    def list_llm_configs(self) -> list[dict[str, Any]]:
+        results = []
+        for item in self._llm_configs.values():
+            key = item.get("api_key")
+            masked_key = ""
+            if key and len(key) > 8:
+                masked_key = f"{key[:4]}••••••••{key[-4:]}"
+            elif key:
+                masked_key = "••••••••"
+
+            results.append({
+                "id": item["id"],
+                "name": item.get("name") or "LLM Provider",
+                "provider": item.get("provider") or "Custom",
+                "base_url": item.get("base_url") or "",
+                "masked_api_key": masked_key,
+                "has_api_key": bool(key),
+                "model": item.get("model") or "",
+                "is_default": bool(item.get("is_default", False)),
+                "status": item.get("status", "not_configured"),
+                "health_message": item.get("health_message", ""),
+                "available_models": item.get("available_models", []),
+            })
+        return results
+
+    def add_or_update_llm(self, data: dict[str, Any]) -> dict[str, Any]:
+        llm_id = data.get("id") or f"llm-{uuid.uuid4().hex[:8]}"
+        api_key = data.get("api_key")
+        # If updating and api_key is empty/not provided, preserve existing key
+        if not api_key and llm_id in self._llm_configs:
+            api_key = self._llm_configs[llm_id].get("api_key")
+
+        is_default = bool(data.get("is_default", False))
+        base_url = (data.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+        model = data.get("model") or "gemini-2.0-flash"
+
+        # Run health check
+        health = self.health_check(
+            api_key=api_key,
+            base_url=base_url,
+            model=model
+        )
+
+        item = {
+            "id": llm_id,
+            "name": data.get("name") or data.get("provider") or "Custom LLM",
+            "provider": data.get("provider") or "Custom",
+            "base_url": base_url,
+            "api_key": api_key,
+            "model": model,
+            "is_default": is_default,
+            "status": health.get("status", "not_configured"),
+            "health_message": health.get("message", ""),
+            "available_models": health.get("available_models", []),
+        }
+
+        if is_default:
+            for k in self._llm_configs:
+                self._llm_configs[k]["is_default"] = False
+            self.set_config(
+                api_key=api_key,
+                base_url=base_url,
+                model=model
+            )
+
+        self._llm_configs[llm_id] = item
+        return item
+
+    def set_default_llm(self, llm_id: str) -> bool:
+        if llm_id not in self._llm_configs:
+            return False
+        for k in self._llm_configs:
+            self._llm_configs[k]["is_default"] = (k == llm_id)
+
+        target = self._llm_configs[llm_id]
+        self.set_config(
+            api_key=target.get("api_key"),
+            base_url=target.get("base_url"),
+            model=target.get("model")
+        )
+        return True
+
+    def delete_llm(self, llm_id: str) -> bool:
+        if llm_id in self._llm_configs:
+            was_default = self._llm_configs[llm_id].get("is_default", False)
+            del self._llm_configs[llm_id]
+            if was_default and self._llm_configs:
+                first_k = next(iter(self._llm_configs))
+                self.set_default_llm(first_k)
+            return True
+        return False
 
     def _extract_models(self, data: Any) -> list[str]:
         raw_ids: list[str] = []

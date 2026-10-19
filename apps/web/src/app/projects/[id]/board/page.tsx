@@ -229,6 +229,8 @@ export default function ScrumBoardPage({
 
   // Inspect Modal
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
+  const [newCriterionInput, setNewCriterionInput] = useState("");
+  const [addingCriterion, setAddingCriterion] = useState(false);
 
   // Sprint Capacity & Team Allocation State
   const [sprintCapacity, setSprintCapacity] = useState<SprintCapacity | null>(null);
@@ -311,6 +313,32 @@ export default function ScrumBoardPage({
     fetchBoardData();
   }, [fetchBoardData]);
 
+  const handleAddCriterion = async () => {
+    if (!selectedItem || !newCriterionInput.trim()) return;
+    try {
+      setAddingCriterion(true);
+      const updatedList = [...(selectedItem.acceptance_criteria || []), newCriterionInput.trim()];
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${selectedItem.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acceptance_criteria: updatedList }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || "Gagal menambahkan kriteria");
+      }
+      const updatedItem = await res.json();
+      setSelectedItem(updatedItem);
+      setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
+      setNewCriterionInput("");
+      setTransitionError(null);
+    } catch (err: unknown) {
+      if (err instanceof Error) setTransitionError(err.message);
+    } finally {
+      setAddingCriterion(false);
+    }
+  };
+
   const handleTransition = async (itemId: string, targetStatus: string, extraPayload: Record<string, any> = {}) => {
     try {
       setTransitionError(null);
@@ -322,7 +350,12 @@ export default function ScrumBoardPage({
 
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.detail || `Failed to transition item to ${targetStatus}`);
+        const msg = errJson.detail || `Failed to transition item to ${targetStatus}`;
+        if (typeof msg === "string" && msg.toLowerCase().includes("acceptance criterion")) {
+          const target = items.find((i) => i.id === itemId);
+          if (target) setSelectedItem(target);
+        }
+        throw new Error(msg);
       }
 
       const updatedItem = await res.json();
@@ -1160,13 +1193,13 @@ export default function ScrumBoardPage({
               )}
 
               {/* Acceptance Criteria Card */}
-              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
+              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
-                    Acceptance Criteria (Ready Guard)
+                    Acceptance Criteria (Tolok Ukur Pengujian)
                   </span>
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent/10 text-accent font-semibold">
-                    {selectedItem.acceptance_criteria.length} Kriteria
+                    {selectedItem.acceptance_criteria?.length || 0} Kriteria
                   </span>
                 </div>
                 {selectedItem.acceptance_criteria && selectedItem.acceptance_criteria.length > 0 ? (
@@ -1181,9 +1214,36 @@ export default function ScrumBoardPage({
                 ) : (
                   <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px] flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Belum ada acceptance criteria. Item tidak dapat dipindahkan ke Ready.</span>
+                    <span>Belum ada acceptance criteria. Tambahkan minimal 1 kriteria di bawah agar dapat dipindahkan ke Ready.</span>
                   </div>
                 )}
+
+                {/* Quick Add Criterion Inline */}
+                <div className="flex items-center gap-1.5 pt-2 border-t border-borderBase-light/40 dark:border-borderBase-dark/40">
+                  <input
+                    type="text"
+                    placeholder="Tambah kriteria pengujian (misal: Unit test lulus, API return 200)..."
+                    value={newCriterionInput}
+                    onChange={(e) => setNewCriterionInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCriterion();
+                      }
+                    }}
+                    className="flex-1 h-7.5 px-2.5 bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded text-xs text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAddCriterion}
+                    isLoading={addingCriterion}
+                    disabled={!newCriterionInput.trim()}
+                    leftIcon={<Plus className="w-3 h-3" />}
+                  >
+                    Tambah
+                  </Button>
+                </div>
               </div>
 
               {/* Definition of Done Card */}
@@ -1417,7 +1477,16 @@ export default function ScrumBoardPage({
 
                 {/* Forward transitions */}
                 {selectedItem.status === "backlog" && (
-                  <Button size="sm" onClick={() => handleTransition(selectedItem.id, "ready")}>
+                  <Button
+                    size="sm"
+                    onClick={() => handleTransition(selectedItem.id, "ready")}
+                    disabled={!selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0}
+                    title={
+                      !selectedItem.acceptance_criteria || selectedItem.acceptance_criteria.length === 0
+                        ? "Wajib memiliki minimal 1 Acceptance Criteria sebelum dipindahkan ke Ready"
+                        : "Pindahkan ke Ready"
+                    }
+                  >
                     Siap Dikerjakan (Ready) →
                   </Button>
                 )}

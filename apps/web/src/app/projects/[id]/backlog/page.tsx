@@ -32,7 +32,23 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  GitBranch,
+  Github,
+  ExternalLink,
+  GitPullRequest,
 } from "lucide-react";
+
+interface WorkItemSubtask {
+  id: string;
+  key: string;
+  title: string;
+  type: string;
+  status: string;
+  priority: string;
+  estimate_points: number;
+  assignee_agent_id?: string;
+  assignee_name?: string;
+}
 
 interface WorkItem {
   id: string;
@@ -51,6 +67,12 @@ interface WorkItem {
   sprint_id?: string;
   created_at: string;
   updated_at: string;
+  parent_id?: string;
+  git_branch?: string;
+  pull_request_url?: string;
+  pull_request_number?: number;
+  pull_request_status?: string;
+  subtasks?: WorkItemSubtask[];
 }
 
 interface Sprint {
@@ -73,6 +95,9 @@ interface Project {
   status: string;
   workspace_path: string;
   active_sprint_name?: string;
+  github_repo_url?: string;
+  github_repo_name?: string;
+  github_repo_mode?: string;
 }
 
 interface AgentRecommendation {
@@ -404,6 +429,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
 
   // Product Backlog items (unassigned to any active or planning sprint)
   const productBacklogItems = items.filter((item) => {
+    if (item.parent_id) return false;
     const isUnplanned = !item.sprint_id;
     const matchesSearch =
       item.title.toLowerCase().includes(backlogSearch.toLowerCase()) ||
@@ -443,6 +469,19 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
         ]}
         actions={
           <div className="flex items-center space-x-2">
+            {project?.github_repo_url && (
+              <a
+                href={project.github_repo_url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-mono font-semibold bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark hover:border-accent text-accent transition-colors"
+                title="Buka Repositori GitHub"
+              >
+                <Github className="w-3.5 h-3.5" />
+                <span>{project.github_repo_name || "GitHub Repo"}</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -527,7 +566,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
             {/* Active Sprint Bucket */}
             {activeSprint ? (
               (() => {
-                const sprintItems = items.filter((i) => i.sprint_id === activeSprint.id);
+                const sprintItems = items.filter((i) => !i.parent_id && i.sprint_id === activeSprint.id);
                 const totalPoints = sprintItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
                 const donePoints = sprintItems
                   .filter((i) => i.status === "done")
@@ -602,6 +641,21 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                               >
                                 {item.title}
                               </span>
+                              {item.subtasks && item.subtasks.length > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark shrink-0"
+                                  title={`${item.subtasks.filter((s) => s.status === "done").length}/${item.subtasks.length} Subtask Selesai`}
+                                >
+                                  <Layers className="w-2.5 h-2.5 text-accent" />
+                                  <span>{item.subtasks.filter((s) => s.status === "done").length}/{item.subtasks.length} Subtasks</span>
+                                </span>
+                              )}
+                              {item.git_branch && (
+                                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark shrink-0" title={`Branch: ${item.git_branch}`}>
+                                  <GitBranch className="w-2.5 h-2.5 text-accent" />
+                                  <span className="max-w-[120px] truncate">{item.git_branch}</span>
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center space-x-3 flex-shrink-0">
@@ -644,7 +698,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
 
             {/* Planned / Future Sprints */}
             {plannedSprints.map((sprint) => {
-              const sprintItems = items.filter((i) => i.sprint_id === sprint.id);
+              const sprintItems = items.filter((i) => !i.parent_id && i.sprint_id === sprint.id);
               const totalPoints = sprintItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
 
               return (
@@ -709,6 +763,21 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                             >
                               {item.title}
                             </span>
+                            {item.subtasks && item.subtasks.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark shrink-0"
+                                title={`${item.subtasks.filter((s) => s.status === "done").length}/${item.subtasks.length} Subtask Selesai`}
+                              >
+                                <Layers className="w-2.5 h-2.5 text-accent" />
+                                <span>{item.subtasks.filter((s) => s.status === "done").length}/{item.subtasks.length} Subtasks</span>
+                              </span>
+                            )}
+                            {item.git_branch && (
+                              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark shrink-0" title={`Branch: ${item.git_branch}`}>
+                                <GitBranch className="w-2.5 h-2.5 text-accent" />
+                                <span className="max-w-[120px] truncate">{item.git_branch}</span>
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center space-x-3 flex-shrink-0">
@@ -947,6 +1016,21 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                       >
                         {item.title}
                       </span>
+                      {item.subtasks && item.subtasks.length > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark shrink-0"
+                          title={`${item.subtasks.filter((s) => s.status === "done").length}/${item.subtasks.length} Subtask Selesai`}
+                        >
+                          <Layers className="w-2.5 h-2.5 text-accent" />
+                          <span>{item.subtasks.filter((s) => s.status === "done").length}/{item.subtasks.length} Subtasks</span>
+                        </span>
+                      )}
+                      {item.git_branch && (
+                        <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-textMuted-light dark:text-textMuted-dark shrink-0" title={`Branch: ${item.git_branch}`}>
+                          <GitBranch className="w-2.5 h-2.5 text-accent" />
+                          <span className="max-w-[120px] truncate">{item.git_branch}</span>
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center space-x-3 flex-shrink-0">

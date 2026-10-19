@@ -29,7 +29,8 @@ class SprintBase(BaseModel):
     capacity_points: int = Field(default=20, ge=1)
 
 class SprintCreate(SprintBase):
-    project_id: str
+    project_id: Optional[str] = None
+    rollover_unfinished_from_sprint_id: Optional[str] = None
 
 class SprintOut(SprintBase):
     id: str

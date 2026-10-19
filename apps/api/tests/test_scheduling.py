@@ -104,3 +104,54 @@ def test_sprint_capacity_and_lifecycle(client):
         })
         assert res_status.status_code == 200
         assert res_status.json()["status"] == "completed"
+
+
+def test_create_sprint_with_rollover(client):
+    res_proj = client.get("/api/v1/projects")
+    project_id = res_proj.json()[0]["id"]
+
+    # 1. Create a sprint
+    res_s1 = client.post(f"/api/v1/projects/{project_id}/sprints", json={
+        "name": "Sprint 1: Initial Wave",
+        "goal": "Deliver basic foundation",
+        "capacity_points": 25,
+        "status": "active"
+    })
+    assert res_s1.status_code == 201
+    s1_data = res_s1.json()
+    s1_id = s1_data["id"]
+
+    # 2. Add an unfinished work item in sprint 1
+    res_item = client.post(f"/api/v1/projects/{project_id}/work-items", json={
+        "project_id": project_id,
+        "sprint_id": s1_id,
+        "title": "Build Multi-Agent Orchestrator",
+        "type": "task",
+        "estimate_points": 5.0,
+        "acceptance_criteria": ["Acceptance criteria 1"]
+    })
+    assert res_item.status_code == 201
+    item_id = res_item.json()["id"]
+
+    # 3. Create Sprint 2 with rollover
+    res_s2 = client.post(f"/api/v1/projects/{project_id}/sprints", json={
+        "name": "Sprint 2: Multi-Attempt Execution",
+        "goal": "Refine and advance multi-agent delivery",
+        "capacity_points": 30,
+        "status": "active",
+        "rollover_unfinished_from_sprint_id": s1_id
+    })
+    assert res_s2.status_code == 201
+    s2_data = res_s2.json()
+    s2_id = s2_data["id"]
+
+    # Verify work item rolled over to Sprint 2
+    res_check = client.get(f"/api/v1/work-items/{item_id}")
+    assert res_check.status_code == 200
+    assert res_check.json()["sprint_id"] == s2_id
+
+    # Verify Sprint 1 status is now completed
+    res_sprints = client.get(f"/api/v1/projects/{project_id}/sprints")
+    s1_updated = next(s for s in res_sprints.json() if s["id"] == s1_id)
+    assert s1_updated["status"] == "completed"
+

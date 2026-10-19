@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -154,6 +155,88 @@ def list_project_sprints(project_id: str, db: Session = Depends(get_db)):
             items_count=len(s.work_items),
         ))
     return results
+
+@router.post("/{project_id}/sprints", response_model=SprintOut, status_code=status.HTTP_201_CREATED)
+def create_project_sprint(
+    project_id: str,
+    sprint_in: SprintCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Membuat sprint baru untuk project dan mengaktifkannya.
+    Mendukung opsi rollover otomatis untuk task yang belum selesai dari sprint sebelumnya.
+    """
+    p = db.query(Project).filter(
+        (Project.id == project_id) | (Project.key == project_id.upper())
+    ).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # If new sprint is active, complete any current active sprint
+    if sprint_in.status == "active":
+        active_sprints = db.query(Sprint).filter(
+            Sprint.project_id == p.id,
+            Sprint.status == "active"
+        ).all()
+        for s in active_sprints:
+            s.status = "completed"
+            s.end_date = datetime.now(timezone.utc)
+
+    # Create the new sprint
+    new_sprint = Sprint(
+        project_id=p.id,
+        name=sprint_in.name.strip(),
+        goal=sprint_in.goal.strip() if sprint_in.goal else None,
+        status=sprint_in.status or "active",
+        capacity_points=sprint_in.capacity_points or 20,
+    )
+    db.add(new_sprint)
+    db.flush()
+
+    rollover_count = 0
+    # Process rollover if specified
+    if sprint_in.rollover_unfinished_from_sprint_id:
+        unfinished_items = db.query(WorkItem).filter(
+            WorkItem.project_id == p.id,
+            WorkItem.sprint_id == sprint_in.rollover_unfinished_from_sprint_id,
+            WorkItem.status.notin_(["done", "cancelled"])
+        ).all()
+        for item in unfinished_items:
+            item.sprint_id = new_sprint.id
+            rollover_count += 1
+
+    # Record audit event
+    db.add(AuditEvent(
+        actor="Scrum Master",
+        action="SPRINT_CREATED",
+        target_type="SPRINT",
+        target_id=new_sprint.id,
+        project_id=p.id,
+        policy_basis="SPRINT_LIFECYCLE_POLICY_V1",
+        details={
+            "sprint_name": new_sprint.name,
+            "goal": new_sprint.goal,
+            "capacity_points": new_sprint.capacity_points,
+            "rollover_count": rollover_count,
+            "from_sprint_id": sprint_in.rollover_unfinished_from_sprint_id
+        }
+    ))
+
+    db.commit()
+    db.refresh(new_sprint)
+
+    return SprintOut(
+        id=new_sprint.id,
+        project_id=new_sprint.project_id,
+        name=new_sprint.name,
+        goal=new_sprint.goal,
+        status=new_sprint.status,
+        capacity_points=new_sprint.capacity_points,
+        start_date=new_sprint.start_date,
+        end_date=new_sprint.end_date,
+        created_at=new_sprint.created_at,
+        items_count=rollover_count
+    )
 
 @router.get("/{project_id}/work-items", response_model=List[WorkItemOut])
 def list_project_work_items(

@@ -157,3 +157,40 @@ def test_health_check_two_stage_warning_when_model_restricted(monkeypatch):
     assert "gemini-2.0-flash" in result["available_models"]
 
 
+def test_llm_configs_disk_persistence_and_deletion(tmp_path, monkeypatch):
+    test_storage = tmp_path / "llm_configs.json"
+
+    # Instance 1
+    adapter1 = LiveLLMEngineAdapter()
+    adapter1._storage_path = test_storage
+    adapter1._save_persisted_configs()
+
+    assert test_storage.exists()
+
+    # Add a new LLM
+    custom_llm = adapter1.add_or_update_llm({
+        "id": "custom-gemini-test",
+        "name": "Custom Gemini Test",
+        "provider": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-2.0-flash",
+        "is_default": False
+    })
+    assert custom_llm["id"] == "custom-gemini-test"
+
+    # Delete an LLM
+    assert adapter1.delete_llm("ollama-local") is True
+    assert "ollama-local" not in adapter1._llm_configs
+
+    # Instance 2 (simulating server reboot / reload)
+    adapter2 = LiveLLMEngineAdapter()
+    adapter2._storage_path = test_storage
+    adapter2._load_persisted_configs()
+
+    # Verify custom LLM survived reload
+    assert "custom-gemini-test" in adapter2._llm_configs
+    # Verify deleted LLM did NOT reappear
+    assert "ollama-local" not in adapter2._llm_configs
+
+
+

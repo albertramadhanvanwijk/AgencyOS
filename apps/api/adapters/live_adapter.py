@@ -40,8 +40,34 @@ class LiveLLMEngineAdapter(EngineAdapter):
         self._model = model or os.environ.get("LIVE_ENGINE_MODEL") or settings.LIVE_ENGINE_MODEL
         self._discovered_models: list[str] = []
 
+        # Persistent storage path for LLM configuration profiles
+        self._storage_path = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "llm_configs.json"
+
         # Multi-provider LLM Configuration Profiles
-        self._llm_configs: dict[str, dict[str, Any]] = {
+        self._llm_configs: dict[str, dict[str, Any]] = {}
+        self._load_persisted_configs()
+
+    def _load_persisted_configs(self) -> None:
+        """Loads LLM configurations from persistent disk storage, or initializes defaults."""
+        if self._storage_path.exists():
+            try:
+                with open(self._storage_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and data:
+                        self._llm_configs = data
+                        # Sync active default config to adapter properties
+                        for item in self._llm_configs.values():
+                            if item.get("is_default"):
+                                self._base_url = (item.get("base_url") or self._base_url).rstrip("/")
+                                self._model = item.get("model") or self._model
+                                if item.get("api_key"):
+                                    self._api_key = item.get("api_key")
+                        return
+            except Exception:
+                pass
+
+        # Default fallback initialization when no config exists on disk
+        self._llm_configs = {
             "gemini-default": {
                 "id": "gemini-default",
                 "name": "Google Gemini (Antigravity)",
@@ -85,6 +111,18 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 "available_models": ["llama3", "qwen2.5-coder", "deepseek-coder"]
             }
         }
+        self._save_persisted_configs()
+
+    def _save_persisted_configs(self) -> None:
+        """Atomically saves LLM configurations to persistent disk storage."""
+        try:
+            self._storage_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self._storage_path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self._llm_configs, f, indent=2)
+            tmp_path.replace(self._storage_path)
+        except Exception:
+            pass
 
     @property
     def adapter_name(self) -> str:
@@ -196,6 +234,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
             )
 
         self._llm_configs[llm_id] = item
+        self._save_persisted_configs()
         return item
 
     def set_default_llm(self, llm_id: str) -> bool:
@@ -210,6 +249,7 @@ class LiveLLMEngineAdapter(EngineAdapter):
             base_url=target.get("base_url"),
             model=target.get("model")
         )
+        self._save_persisted_configs()
         return True
 
     def delete_llm(self, llm_id: str) -> bool:
@@ -219,6 +259,8 @@ class LiveLLMEngineAdapter(EngineAdapter):
             if was_default and self._llm_configs:
                 first_k = next(iter(self._llm_configs))
                 self.set_default_llm(first_k)
+            else:
+                self._save_persisted_configs()
             return True
         return False
 

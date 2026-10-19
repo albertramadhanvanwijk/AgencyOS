@@ -113,9 +113,9 @@ export default function SettingsPage() {
     try {
       setIsLoading(true);
       const [statusRes, adaptersRes, llmsRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/v1/system/status"),
-        fetch("http://127.0.0.1:8000/api/v1/system/adapters"),
-        fetch("http://127.0.0.1:8000/api/v1/system/llms"),
+        fetch("http://127.0.0.1:8000/api/v1/system/status", { cache: "no-store" }),
+        fetch("http://127.0.0.1:8000/api/v1/system/adapters", { cache: "no-store" }),
+        fetch("http://127.0.0.1:8000/api/v1/system/llms", { cache: "no-store" }),
       ]);
 
       if (statusRes.ok) {
@@ -248,7 +248,6 @@ export default function SettingsPage() {
         setLlms(data.llms);
       }
       setIsModalOpen(false);
-      await fetchData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error saving LLM config");
     } finally {
@@ -261,6 +260,7 @@ export default function SettingsPage() {
       setTestingId(id);
       const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}/test`, {
         method: "POST",
+        headers: { "Cache-Control": "no-cache" },
       });
       const data: ConnectionTestResult = await res.json();
       setLlms((prev) =>
@@ -284,32 +284,51 @@ export default function SettingsPage() {
 
   const handleSetDefaultLlm = async (id: string) => {
     try {
+      // Optimistically mark this LLM as default immediately
+      setLlms((prev) =>
+        prev.map((item) => ({
+          ...item,
+          is_default: item.id === id,
+        }))
+      );
       const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}/set-default`, {
         method: "POST",
+        headers: { "Cache-Control": "no-cache" },
       });
       if (res.ok) {
         const data = await res.json();
-        setLlms(data.llms);
+        if (data.llms) {
+          setLlms(data.llms);
+        }
+      } else {
         await fetchData();
       }
     } catch {
-      // ignore
+      await fetchData();
     }
   };
 
   const handleDeleteLlm = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus konfigurasi LLM ini?")) return;
     try {
+      // Optimistic delete: immediately remove from UI state so it doesn't flicker
+      setLlms((prev) => prev.filter((item) => item.id !== id));
+
       const res = await fetch(`http://127.0.0.1:8000/api/v1/system/llms/${id}`, {
         method: "DELETE",
+        headers: { "Cache-Control": "no-cache" },
       });
       if (res.ok) {
         const data = await res.json();
-        setLlms(data.llms);
+        if (data.llms) {
+          setLlms(data.llms);
+        }
+      } else {
+        // Revert on error
         await fetchData();
       }
     } catch {
-      // ignore
+      await fetchData();
     }
   };
 
@@ -343,14 +362,9 @@ export default function SettingsPage() {
         <div className="p-4 rounded-md bg-accent/10 border border-accent/25 flex items-start justify-between text-xs">
           <div className="flex items-start space-x-3">
             <Sparkles className="w-5 h-5 text-accent shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <span className="font-semibold text-accent text-sm block">
-                Google Gemini & Antigravity Native Engine
-              </span>
-              <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed max-w-4xl">
-                AgencyOS dirancang untuk berjalan sinergis dengan <strong>Google Antigravity</strong> dan model-model <strong>Google Gemini (2.0 Flash, 2.5 Pro, 1.5 Pro)</strong>. Anda dapat menambahkan beberapa koneksi API Key sekaligus, menguji apakah tier akun Anda mendukung model tertentu, serta menetapkan model default untuk workforce agent.
-              </p>
-            </div>
+            <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed max-w-4xl pt-0.5">
+              Anda dapat menambahkan beberapa koneksi API Key sekaligus, menguji apakah tier akun Anda mendukung model tertentu, serta menetapkan model default untuk workforce agent.
+            </p>
           </div>
           <Button
             size="sm"

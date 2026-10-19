@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from apps.api.core.database import get_db
@@ -12,6 +12,11 @@ from apps.api.adapters.registry import list_adapters_info, get_adapter, ADAPTERS
 from apps.api.adapters.live_adapter import live_adapter
 
 router = APIRouter(tags=["Health & Status"])
+
+def _set_no_cache(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
 class TestConnectionIn(BaseModel):
     api_key: Optional[str] = None
@@ -105,13 +110,15 @@ class LLMConfigIn(BaseModel):
     is_default: Optional[bool] = False
 
 @router.get("/system/llms")
-def get_system_llms():
+def get_system_llms(response: Response):
     """Returns list of all configured LLM providers and connections."""
+    _set_no_cache(response)
     return live_adapter.list_llm_configs()
 
 @router.post("/system/llms")
-def create_or_update_llm(payload: LLMConfigIn):
+def create_or_update_llm(payload: LLMConfigIn, response: Response):
     """Adds or updates an LLM provider connection and runs validation check."""
+    _set_no_cache(response)
     item = live_adapter.add_or_update_llm(payload.model_dump(exclude_unset=True))
     return {
         "status": "ok",
@@ -121,8 +128,9 @@ def create_or_update_llm(payload: LLMConfigIn):
     }
 
 @router.post("/system/llms/{llm_id}/test")
-def test_specific_llm(llm_id: str):
+def test_specific_llm(llm_id: str, response: Response):
     """Tests connection specifically for a configured LLM."""
+    _set_no_cache(response)
     if llm_id not in live_adapter._llm_configs:
         raise HTTPException(status_code=404, detail="LLM configuration not found.")
     target = live_adapter._llm_configs[llm_id]
@@ -137,8 +145,9 @@ def test_specific_llm(llm_id: str):
     return result
 
 @router.post("/system/llms/{llm_id}/set-default")
-def set_default_llm_endpoint(llm_id: str):
+def set_default_llm_endpoint(llm_id: str, response: Response):
     """Sets the given LLM as the active default model."""
+    _set_no_cache(response)
     success = live_adapter.set_default_llm(llm_id)
     if not success:
         raise HTTPException(status_code=404, detail="LLM configuration not found.")
@@ -149,8 +158,9 @@ def set_default_llm_endpoint(llm_id: str):
     }
 
 @router.delete("/system/llms/{llm_id}")
-def delete_llm_endpoint(llm_id: str):
+def delete_llm_endpoint(llm_id: str, response: Response):
     """Deletes an LLM configuration."""
+    _set_no_cache(response)
     success = live_adapter.delete_llm(llm_id)
     if not success:
         raise HTTPException(status_code=404, detail="LLM configuration not found.")

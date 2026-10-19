@@ -174,6 +174,12 @@ interface Sprint {
   items_count?: number;
 }
 
+function getCleanModelBadge(modelName?: string | null): string {
+  if (!modelName) return "";
+  const cleaned = modelName.includes("/") ? modelName.split("/")[1] : modelName;
+  return cleaned.replace("-preview", "").replace("-latest", "");
+}
+
 const COLUMNS = [
   { id: "backlog", label: "Backlog", description: "Unrefined or awaiting criteria" },
   { id: "ready", label: "Ready", description: "Criteria verified, ready for sprint" },
@@ -1021,19 +1027,20 @@ export default function ScrumBoardPage({
                         draggable
                         onDragStart={(e) => handleDragStart(e, item.id)}
                         onDragEnd={handleDragEnd}
-                        className={`p-3 rounded bg-surface-light dark:bg-surface-dark border space-y-2 shadow-xs transition-all cursor-grab active:cursor-grabbing hover:border-accent/40 ${
+                        className={`p-3 rounded-lg bg-surface-light dark:bg-surface-dark border space-y-2 shadow-xs transition-all cursor-grab active:cursor-grabbing hover:border-accent/40 ${
                           draggedItemId === item.id
                             ? "opacity-40 scale-[0.98] border-dashed border-accent"
                             : "border-borderBase-light dark:border-borderBase-dark"
                         }`}
                       >
-                        {/* Card Header with Drag Handle */}
-                        <div className="flex items-center justify-between text-[11px]">
-                          <div className="flex items-center space-x-1.5">
-                            <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 cursor-grab" />
-                            <span className="font-mono font-semibold text-accent">{item.key}</span>
+                        {/* Card Header */}
+                        <div className="flex items-center justify-between text-[11px] gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <GripVertical className="w-3.5 h-3.5 text-textMuted-light/40 dark:text-textMuted-dark/40 shrink-0 cursor-grab" />
+                            <span className="font-mono font-semibold text-accent shrink-0">{item.key}</span>
+                            <PriorityIndicator level={item.priority as PriorityLevel} showLabel={false} />
                           </div>
-                          <span className="uppercase text-[9px] font-semibold px-1 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark">
+                          <span className="uppercase text-[9px] font-semibold px-1.5 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark shrink-0">
                             {item.type}
                           </span>
                         </div>
@@ -1041,87 +1048,96 @@ export default function ScrumBoardPage({
                         {/* Title */}
                         <h4
                           onClick={() => setSelectedItem(item)}
-                          className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark hover:text-accent cursor-pointer line-clamp-2"
+                          className="text-xs font-semibold text-textPrimary-light dark:text-textPrimary-dark hover:text-accent cursor-pointer line-clamp-2 leading-snug"
                         >
                           {item.title}
                         </h4>
 
-                        {/* Metadata row */}
-                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-borderBase-light dark:border-borderBase-dark">
-                          <PriorityIndicator level={item.priority as PriorityLevel} showLabel={false} />
-                          <div className="flex items-center space-x-1 font-mono text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                            <span>{item.estimate_points} pts</span>
-                            <span>•</span>
-                            <span>{item.acceptance_criteria.length} AC</span>
-                          </div>
-                        </div>
-
-                        {/* Assignee */}
-                        <div className="flex items-center justify-between text-[11px] pt-1">
-                          <div className="flex items-center space-x-1.5 text-textMuted-light dark:text-textMuted-dark truncate">
-                            <User className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{item.assignee_name || "Unassigned"}</span>
+                        {/* Assignee & Metrics Row (Clean & Unified) */}
+                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 gap-1.5 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0 text-textMuted-light dark:text-textMuted-dark">
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="truncate max-w-[85px] text-[11px]" title={item.assignee_name || "Belum Ditugaskan"}>
+                              {item.assignee_name || "Unassigned"}
+                            </span>
                             {(() => {
                               const assigned = agents.find((a) => a.id === item.assignee_agent_id);
                               if (assigned?.llm_model) {
                                 return (
                                   <span
-                                    className="inline-flex items-center space-x-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-[85px] truncate flex-shrink-0"
+                                    className="inline-flex items-center gap-0.5 text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 max-w-[70px] truncate shrink-0"
                                     title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
                                   >
-                                    <Sparkles className="w-2.5 h-2.5 flex-shrink-0" />
-                                    <span className="truncate">{assigned.llm_model}</span>
+                                    <Sparkles className="w-2 h-2 shrink-0 text-purple-500" />
+                                    <span className="truncate">{getCleanModelBadge(assigned.llm_model)}</span>
                                   </span>
                                 );
                               }
                               return null;
                             })()}
                           </div>
-                          {!item.assignee_name && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedItem(item);
-                                fetchRecommendations(item.id);
-                              }}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 flex items-center space-x-1 transition-colors"
-                            >
-                              <Zap className="w-2.5 h-2.5" />
-                              <span>Cocokkan</span>
-                            </button>
-                          )}
+                          <div className="flex items-center gap-1 font-mono text-[10px] text-textMuted-light dark:text-textMuted-dark shrink-0">
+                            <span>{item.estimate_points} pts</span>
+                            {item.acceptance_criteria.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>{item.acceptance_criteria.length} AC</span>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         {/* Card Footer Actions with Clean Auto-Layout */}
-                        <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark space-y-1.5">
+                        <div className="pt-1.5 border-t border-borderBase-light/60 dark:border-borderBase-dark/60">
                           {col.id === "backlog" && (
-                            <div className="flex items-center justify-end">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTransition(item.id, "ready");
-                                }}
-                                title="Move to Ready (Requires criteria)"
-                                className="w-full py-1 px-2 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center justify-center space-x-1"
-                              >
-                                <span>Move to Ready</span>
-                                <ArrowRight className="w-2.5 h-2.5" />
-                              </button>
-                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTransition(item.id, "ready");
+                              }}
+                              title="Pindahkan ke Ready"
+                              className="w-full py-1.5 px-2 rounded text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center justify-center gap-1.5 min-w-0"
+                            >
+                              <span className="truncate">Siap Dikerjakan (Ready)</span>
+                              <ArrowRight className="w-3 h-3 shrink-0" />
+                            </button>
                           )}
 
                           {col.id === "ready" && (
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between gap-1.5">
+                              {(() => {
+                                const assigned = agents.find((a) => a.id === item.assignee_agent_id);
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTriggerRun(item.id);
+                                    }}
+                                    disabled={triggeringRunId === item.id}
+                                    title={`Jalankan agen untuk tugas ini ${assigned?.llm_model ? `(Model: ${assigned.llm_model})` : ""}`}
+                                    className="w-full py-1.5 px-2.5 rounded text-[11px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center gap-1.5 shadow-xs overflow-hidden min-w-0"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">
+                                      {triggeringRunId === item.id ? "Menjalankan..." : "Run Agent"}
+                                    </span>
+                                    {assigned?.llm_model && triggeringRunId !== item.id && (
+                                      <span className="text-[9px] font-mono opacity-85 bg-black/20 dark:bg-white/15 px-1.5 py-0.2 rounded font-normal shrink-0 truncate max-w-[75px]">
+                                        {getCleanModelBadge(assigned.llm_model)}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })()}
+                              <div className="flex items-center justify-between text-[10px] text-textMuted-light dark:text-textMuted-dark px-0.5">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleTransition(item.id, "backlog");
                                   }}
-                                  title="Move back to Backlog"
-                                  className="px-2 py-0.5 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
+                                  className="hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors flex items-center gap-0.5"
                                 >
-                                  <ArrowLeft className="w-2.5 h-2.5" />
+                                  <ArrowLeft className="w-2.5 h-2.5 shrink-0" />
                                   <span>Backlog</span>
                                 </button>
                                 <button
@@ -1129,134 +1145,106 @@ export default function ScrumBoardPage({
                                     e.stopPropagation();
                                     handleTransition(item.id, "in_progress");
                                   }}
-                                  title="Start execution in workspace"
-                                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center space-x-1"
+                                  className="hover:text-textPrimary-light dark:hover:text-textPrimary-dark transition-colors flex items-center gap-0.5"
                                 >
-                                  <span>Start</span>
-                                  <ArrowRight className="w-2.5 h-2.5" />
+                                  <span>Mulai Manual</span>
+                                  <ArrowRight className="w-2.5 h-2.5 shrink-0" />
                                 </button>
                               </div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTriggerRun(item.id);
-                                }}
-                                disabled={triggeringRunId === item.id}
-                                title="Jalankan agen untuk mengeksekusi tugas ini"
-                                className="w-full py-1 px-2 rounded text-[10px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center space-x-1 shadow-xs"
-                              >
-                                <Sparkles className="w-3 h-3" />
-                                <span>
-                                  {triggeringRunId === item.id
-                                    ? "Running..."
-                                    : agents.find((a) => a.id === item.assignee_agent_id)?.llm_model
-                                    ? `Run Agent (${agents.find((a) => a.id === item.assignee_agent_id)?.llm_model})`
-                                    : "Run Agent"}
-                                </span>
-                              </button>
                             </div>
                           )}
 
                           {col.id === "in_progress" && (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between gap-1.5">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "ready");
-                                  }}
-                                  title="Move back to Ready"
-                                  className="px-2 py-0.5 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
-                                >
-                                  <ArrowLeft className="w-2.5 h-2.5" />
-                                  <span>Ready</span>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTransition(item.id, "in_review");
-                                  }}
-                                  title="Submit for review"
-                                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-status-info/10 text-status-info hover:bg-status-info/20 transition-colors flex items-center space-x-1"
-                                >
-                                  <span>Review</span>
-                                  <ArrowRight className="w-2.5 h-2.5" />
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {(() => {
+                                const assigned = agents.find((a) => a.id === item.assignee_agent_id);
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTriggerRun(item.id);
+                                    }}
+                                    disabled={triggeringRunId === item.id}
+                                    title={`Jalankan ulang agen ${assigned?.llm_model ? `(Model: ${assigned.llm_model})` : ""}`}
+                                    className="flex-1 py-1.5 px-2 rounded text-[11px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center gap-1 shadow-xs overflow-hidden min-w-0"
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">
+                                      {triggeringRunId === item.id ? "Running..." : "Run"}
+                                    </span>
+                                    {assigned?.llm_model && triggeringRunId !== item.id && (
+                                      <span className="text-[9px] font-mono opacity-85 bg-black/20 dark:bg-white/15 px-1 py-0.2 rounded font-normal shrink-0 truncate max-w-[65px]">
+                                        {getCleanModelBadge(assigned.llm_model)}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })()}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleTriggerRun(item.id);
+                                  handleTransition(item.id, "in_review");
                                 }}
-                                disabled={triggeringRunId === item.id}
-                                title="Jalankan agen untuk mengeksekusi tugas ini"
-                                className="w-full py-1 px-2 rounded text-[10px] font-semibold bg-accent text-white hover:bg-accent/90 transition-colors flex items-center justify-center space-x-1 shadow-xs"
+                                title="Kirim untuk review"
+                                className="py-1.5 px-2.5 rounded text-[11px] font-medium bg-status-info/10 text-status-info hover:bg-status-info/20 transition-colors flex items-center gap-1 shrink-0"
                               >
-                                <Sparkles className="w-3 h-3" />
-                                <span>
-                                  {triggeringRunId === item.id
-                                    ? "Running..."
-                                    : agents.find((a) => a.id === item.assignee_agent_id)?.llm_model
-                                    ? `Run Agent (${agents.find((a) => a.id === item.assignee_agent_id)?.llm_model})`
-                                    : "Run Agent"}
-                                </span>
+                                <span>Review</span>
+                                <ArrowRight className="w-3 h-3 shrink-0" />
                               </button>
                             </div>
                           )}
 
                           {col.id === "in_review" && (
                             <div className="space-y-1.5">
-                              {/* Row 1: Rework and Approve */}
-                              <div className="flex items-center justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5 min-w-0">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleTransition(item.id, "in_progress");
                                   }}
-                                  title="Return to In Progress for rework"
-                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-medium bg-status-warning/10 text-status-warning hover:bg-status-warning/20 transition-colors flex items-center justify-center space-x-1"
+                                  title="Kembalikan ke In Progress untuk perbaikan"
+                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-medium bg-status-warning/10 text-status-warning hover:bg-status-warning/20 transition-colors flex items-center justify-center gap-1 min-w-0"
                                 >
-                                  <RotateCcw className="w-2.5 h-2.5" />
-                                  <span>Rework</span>
+                                  <RotateCcw className="w-3 h-3 shrink-0" />
+                                  <span className="truncate">Rework</span>
                                 </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleTransition(item.id, "done");
                                   }}
-                                  title="Approve & Complete"
-                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-medium bg-status-success/15 text-status-success hover:bg-status-success/25 transition-colors flex items-center justify-center space-x-1 font-semibold"
+                                  title="Setujui dan selesaikan tugas"
+                                  className="flex-1 py-1 px-1.5 rounded text-[10px] font-semibold bg-status-success/15 text-status-success hover:bg-status-success/25 transition-colors flex items-center justify-center gap-1 min-w-0"
                                 >
-                                  <Check className="w-2.5 h-2.5" />
-                                  <span>Approve</span>
+                                  <Check className="w-3 h-3 shrink-0" />
+                                  <span className="truncate">Approve</span>
                                 </button>
                               </div>
-                              {/* Row 2: View Artifacts */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleOpenLatestRun(item.id);
                                 }}
-                                title="View execution run artifacts & quality checks"
-                                className="w-full py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center space-x-1.5"
+                                title="Lihat hasil run dan diff kode"
+                                className="w-full py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5 min-w-0"
                               >
-                                <Terminal className="w-2.5 h-2.5 text-accent" />
-                                <span>Artifacts & Run Logs</span>
+                                <Terminal className="w-3 h-3 text-accent shrink-0" />
+                                <span className="truncate">Hasil Run & Diffs</span>
                               </button>
                             </div>
                           )}
 
                           {col.id === "done" && (
-                            <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleTransition(item.id, "in_review");
                                 }}
-                                title="Reopen item for review"
-                                className="py-1 px-2 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center space-x-1"
+                                title="Buka kembali untuk review ulang"
+                                className="py-1 px-2 rounded text-[10px] font-medium text-textMuted-light hover:text-textPrimary-light dark:text-textMuted-dark dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors flex items-center gap-1 shrink-0"
                               >
-                                <RotateCcw className="w-2.5 h-2.5" />
+                                <RotateCcw className="w-3 h-3 shrink-0" />
                                 <span>Reopen</span>
                               </button>
                               <button
@@ -1264,11 +1252,11 @@ export default function ScrumBoardPage({
                                   e.stopPropagation();
                                   handleOpenLatestRun(item.id);
                                 }}
-                                title="View execution run artifacts"
-                                className="flex-1 py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center space-x-1.5"
+                                title="Lihat artefak eksekusi"
+                                className="flex-1 py-1 px-2 rounded text-[10px] font-medium bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textPrimary-light dark:text-textPrimary-dark hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5 min-w-0"
                               >
-                                <FileCode className="w-2.5 h-2.5 text-status-success" />
-                                <span>View Run</span>
+                                <FileCode className="w-3 h-3 text-status-success shrink-0" />
+                                <span className="truncate">Lihat Artefak</span>
                               </button>
                             </div>
                           )}
@@ -1285,225 +1273,258 @@ export default function ScrumBoardPage({
 
       {/* Inspect Item Modal */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-lg max-w-lg w-full p-5 space-y-4 shadow-xl">
-            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark">
-              <div>
-                <div className="flex items-center space-x-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark rounded-xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-borderBase-light dark:border-borderBase-dark gap-3">
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-semibold">
                     {selectedItem.key}
                   </span>
                   <StatusBadge variant="info" label={selectedItem.status.toUpperCase()} />
                   <PriorityIndicator level={selectedItem.priority as PriorityLevel} />
                 </div>
-                <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark mt-1">
+                <h3 className="text-base font-semibold text-textPrimary-light dark:text-textPrimary-dark leading-snug">
                   {selectedItem.title}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
-                className="p-1 rounded text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark"
+                className="p-1.5 rounded-md text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            {/* Modal Scrollable Body */}
+            <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
+              {/* Description Card */}
               {selectedItem.description && (
-                <div>
-                  <span className="font-semibold block mb-1">Description:</span>
-                  <p className="text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-1">
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                    Deskripsi Tugas
+                  </span>
+                  <p className="text-xs text-textPrimary-light dark:text-textPrimary-dark leading-relaxed whitespace-pre-wrap">
                     {selectedItem.description}
                   </p>
                 </div>
               )}
 
-              {/* Acceptance Criteria */}
-              <div>
-                <span className="font-semibold block mb-1">Acceptance Criteria (Enforced by Ready Guard):</span>
+              {/* Acceptance Criteria Card */}
+              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider">
+                    Acceptance Criteria (Ready Guard)
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-accent/10 text-accent font-semibold">
+                    {selectedItem.acceptance_criteria.length} Kriteria
+                  </span>
+                </div>
                 {selectedItem.acceptance_criteria && selectedItem.acceptance_criteria.length > 0 ? (
-                  <ul className="space-y-1">
+                  <ul className="space-y-1.5">
                     {selectedItem.acceptance_criteria.map((c, i) => (
-                      <li key={i} className="flex items-start space-x-2 text-textPrimary-light dark:text-textPrimary-dark">
-                        <Check className="w-3.5 h-3.5 text-status-success flex-shrink-0 mt-0.5" />
-                        <span>{c}</span>
+                      <li key={i} className="flex items-start gap-2 text-textPrimary-light dark:text-textPrimary-dark">
+                        <Check className="w-3.5 h-3.5 text-status-success shrink-0 mt-0.5" />
+                        <span className="leading-snug">{c}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <div className="p-2 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px]">
-                    No acceptance criteria attached. Item cannot transition to Ready.
+                  <div className="p-2.5 rounded bg-status-danger/10 border border-status-danger/20 text-status-danger text-[11px] flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Belum ada acceptance criteria. Item tidak dapat dipindahkan ke Ready.</span>
                   </div>
                 )}
               </div>
 
-              {/* Definition of Done */}
-              <div>
-                <span className="font-semibold block mb-1">Definition of Done:</span>
-                <ul className="space-y-1">
-                  {selectedItem.definition_of_done.map((dod, i) => (
-                    <li key={i} className="flex items-center space-x-2 text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                      <span>{dod}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {/* Definition of Done Card */}
+              {selectedItem.definition_of_done && selectedItem.definition_of_done.length > 0 && (
+                <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2">
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block">
+                    Definition of Done
+                  </span>
+                  <ul className="space-y-1.5">
+                    {selectedItem.definition_of_done.map((dod, i) => (
+                      <li key={i} className="flex items-center gap-2 text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                        <span>{dod}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-              {/* Assignee & Workspace */}
-              <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Assigned Agent:</span>
-                    <span className="font-semibold flex items-center space-x-1.5 text-xs text-textPrimary-light dark:text-textPrimary-dark">
-                      <User className="w-3.5 h-3.5 text-accent" />
+              {/* Assignee & Model & Estimate Card */}
+              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
+                    Agen yang Ditugaskan
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-xs flex items-center gap-1.5 text-textPrimary-light dark:text-textPrimary-dark">
+                      <User className="w-3.5 h-3.5 text-accent shrink-0" />
                       <span>{selectedItem.assignee_name || "Belum Ditugaskan"}</span>
                     </span>
                     {(() => {
                       const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
                       if (assigned?.llm_model) {
                         return (
-                          <div className="mt-1 flex items-center space-x-1.5">
-                            <span className="inline-flex items-center space-x-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium">
-                              <Sparkles className="w-2.5 h-2.5 text-purple-500" />
-                              <span>{assigned.llm_model}</span>
-                            </span>
-                            <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                              ({assigned.llm_profile_name || "Default Sistem"})
-                            </span>
-                          </div>
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 font-medium"
+                            title={`Model LLM: ${assigned.llm_model} (${assigned.llm_profile_name || 'Default Sistem'})`}
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-purple-500 shrink-0" />
+                            <span>{assigned.llm_model}</span>
+                          </span>
                         );
                       }
                       return null;
                     })()}
                   </div>
-                  <div>
-                    <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Estimate:</span>
-                    <span className="font-mono font-semibold">{selectedItem.estimate_points} Story Points</span>
-                  </div>
+                  {(() => {
+                    const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                    if (assigned?.llm_profile_name) {
+                      return (
+                        <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark block mt-1">
+                          Provider: {assigned.llm_profile_name}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-textMuted-light dark:text-textMuted-dark uppercase tracking-wider block mb-1">
+                    Estimasi Story Points
+                  </span>
+                  <span className="font-mono font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
+                    {selectedItem.estimate_points} Points
+                  </span>
+                </div>
+              </div>
+
+              {/* Smart Staffing Panel */}
+              <div className="p-3.5 rounded-lg border border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/20 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs flex items-center gap-1.5 text-accent">
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    <span>Smart Staffing & Rekomendasi</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => fetchRecommendations(selectedItem.id)}
+                    isLoading={loadingRecs}
+                    leftIcon={<Sparkles className="w-3 h-3 text-accent" />}
+                  >
+                    {recommendations.length > 0 && showRecsSection ? "Segarkan" : "Cari Agen Terbaik"}
+                  </Button>
                 </div>
 
-                {/* Smart Recommendation Button / Panel */}
-                <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-xs flex items-center space-x-1.5 text-accent">
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>Smart Staffing & Rekomendasi</span>
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => fetchRecommendations(selectedItem.id)}
-                      isLoading={loadingRecs}
-                      leftIcon={<Sparkles className="w-3 h-3 text-accent" />}
-                    >
-                      {recommendations.length > 0 && showRecsSection ? "Segarkan" : "Cari Agen Terbaik"}
-                    </Button>
-                  </div>
-
-                  {/* Recommendation Candidates List */}
-                  {showRecsSection && (
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {loadingRecs ? (
-                        <div className="p-3 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                          Menganalisis kecocokan skill, peran & kapasitas agen...
-                        </div>
-                      ) : recommendations.length === 0 ? (
-                        <div className="p-2 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
-                          Tidak ada agen aktif yang tersedia saat ini.
-                        </div>
-                      ) : (
-                        recommendations.map((rec) => {
-                          const isAssigned = selectedItem.assignee_agent_id === rec.agent_id;
-                          return (
-                            <div
-                              key={rec.agent_id}
-                              className={`p-2.5 rounded border transition-all text-xs space-y-1.5 ${
-                                rec.is_recommended
-                                  ? "border-accent/50 bg-accent/5 dark:bg-accent/10"
-                                  : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/40"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
-                                  <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
-                                    {rec.name}
-                                  </span>
-                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
-                                    ({rec.role_name})
-                                  </span>
-                                </div>
-                                <div className="flex items-center space-x-1.5">
-                                  <span
-                                    className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
-                                      rec.match_score >= 80
-                                        ? "bg-status-success/15 text-status-success border border-status-success/30"
-                                        : "bg-status-info/15 text-status-info border border-status-info/30"
-                                    }`}
-                                  >
-                                    {rec.match_score}% Cocok
-                                  </span>
-                                  {rec.is_recommended && (
-                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-accent text-white">
-                                      Best Fit
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-tight">
-                                {rec.rationale}
-                              </p>
-
-                              {rec.matched_skills.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {rec.matched_skills.map((s, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="px-1.5 py-0.2 rounded text-[9px] bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textPrimary-light dark:text-textPrimary-dark"
-                                    >
-                                      ✓ {s}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="flex items-center justify-between pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px]">
-                                <span className="text-textMuted-light dark:text-textMuted-dark font-mono">
-                                  Slot Aktif: {rec.current_concurrency}/{rec.max_concurrency}
+                {/* Recommendation Candidates List */}
+                {showRecsSection && (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {loadingRecs ? (
+                      <div className="p-3 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                        Menganalisis kecocokan skill, peran & kapasitas agen...
+                      </div>
+                    ) : recommendations.length === 0 ? (
+                      <div className="p-2 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                        Tidak ada agen aktif yang tersedia saat ini.
+                      </div>
+                    ) : (
+                      recommendations.map((rec) => {
+                        const isAssigned = selectedItem.assignee_agent_id === rec.agent_id;
+                        return (
+                          <div
+                            key={rec.agent_id}
+                            className={`p-3 rounded-lg border transition-all text-xs space-y-1.5 ${
+                              rec.is_recommended
+                                ? "border-accent/50 bg-accent/5 dark:bg-accent/10"
+                                : "border-borderBase-light dark:border-borderBase-dark bg-canvas-light dark:bg-canvas-dark"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                                <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark truncate">
+                                  {rec.name}
                                 </span>
-                                {isAssigned ? (
-                                  <span className="font-semibold text-status-success flex items-center space-x-1">
-                                    <Check className="w-3 h-3" />
-                                    <span>Sedang Ditugaskan</span>
+                                <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark truncate">
+                                  ({rec.role_name})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span
+                                  className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
+                                    rec.match_score >= 80
+                                      ? "bg-status-success/15 text-status-success border border-status-success/30"
+                                      : "bg-status-info/15 text-status-info border border-status-info/30"
+                                  }`}
+                                >
+                                  {rec.match_score}% Cocok
+                                </span>
+                                {rec.is_recommended && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-accent text-white">
+                                    Best Fit
                                   </span>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleAssignAgent(selectedItem.id, rec.agent_id, rec.rationale)}
-                                    isLoading={assigningAgentId === rec.agent_id}
-                                    leftIcon={<User className="w-3 h-3" />}
-                                  >
-                                    Tugaskan Agen
-                                  </Button>
                                 )}
                               </div>
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
+
+                            <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-tight">
+                              {rec.rationale}
+                            </p>
+
+                            {rec.matched_skills.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {rec.matched_skills.map((s, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-1.5 py-0.2 rounded text-[9px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textPrimary-light dark:text-textPrimary-dark"
+                                  >
+                                    ✓ {s}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-1.5 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px]">
+                              <span className="text-textMuted-light dark:text-textMuted-dark font-mono">
+                                Slot Aktif: {rec.current_concurrency}/{rec.max_concurrency}
+                              </span>
+                              {isAssigned ? (
+                                <span className="font-semibold text-status-success flex items-center gap-1">
+                                  <Check className="w-3 h-3" />
+                                  <span>Sedang Ditugaskan</span>
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAssignAgent(selectedItem.id, rec.agent_id, rec.rationale)}
+                                  isLoading={assigningAgentId === rec.agent_id}
+                                  leftIcon={<User className="w-3 h-3" />}
+                                >
+                                  Tugaskan Agen
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="pt-3 border-t border-borderBase-light dark:border-borderBase-dark flex items-center justify-between">
+            {/* Modal Action Footer with Responsive Auto-Layout */}
+            <div className="pt-3.5 border-t border-borderBase-light dark:border-borderBase-dark flex flex-wrap items-center justify-between gap-2.5">
               <Button size="sm" variant="outline" onClick={() => setSelectedItem(null)}>
-                Close
+                Tutup
               </Button>
-              <div className="flex space-x-1.5">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
                 {/* Reverse transitions */}
                 {selectedItem.status === "ready" && (
                   <Button
@@ -1512,7 +1533,7 @@ export default function ScrumBoardPage({
                     onClick={() => handleTransition(selectedItem.id, "backlog")}
                     leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
                   >
-                    Return to Backlog
+                    Kembali ke Backlog
                   </Button>
                 )}
                 {selectedItem.status === "in_progress" && (
@@ -1522,7 +1543,7 @@ export default function ScrumBoardPage({
                     onClick={() => handleTransition(selectedItem.id, "ready")}
                     leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
                   >
-                    Return to Ready
+                    Kembali ke Ready
                   </Button>
                 )}
                 {selectedItem.status === "in_review" && (
@@ -1532,7 +1553,7 @@ export default function ScrumBoardPage({
                     onClick={() => handleTransition(selectedItem.id, "in_progress")}
                     leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
                   >
-                    Request Rework
+                    Minta Rework
                   </Button>
                 )}
                 {selectedItem.status === "done" && (
@@ -1542,64 +1563,80 @@ export default function ScrumBoardPage({
                     onClick={() => handleTransition(selectedItem.id, "in_review")}
                     leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
                   >
-                    Reopen for Review
+                    Buka Ulang
                   </Button>
                 )}
 
                 {/* Forward transitions */}
                 {selectedItem.status === "backlog" && (
                   <Button size="sm" onClick={() => handleTransition(selectedItem.id, "ready")}>
-                    Move to Ready →
+                    Siap Dikerjakan (Ready) →
                   </Button>
                 )}
                 {selectedItem.status === "ready" && (
-                  <div className="flex space-x-1.5">
-                    <Button
-                      size="sm"
-                      onClick={() => handleTriggerRun(selectedItem.id)}
-                      isLoading={triggeringRunId === selectedItem.id}
-                      leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                    >
-                      {agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model
-                        ? `Run Agent (${agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model})`
-                        : "Run Agent"}
-                    </Button>
+                  <>
+                    {(() => {
+                      const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                      return (
+                        <Button
+                          size="sm"
+                          onClick={() => handleTriggerRun(selectedItem.id)}
+                          isLoading={triggeringRunId === selectedItem.id}
+                          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                        >
+                          <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
+                          {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
+                            <span className="text-[10px] font-mono opacity-80 font-normal">
+                              ({getCleanModelBadge(assigned.llm_model)})
+                            </span>
+                          )}
+                        </Button>
+                      );
+                    })()}
                     <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_progress")}>
-                      Manual Start →
+                      Mulai Manual →
                     </Button>
-                  </div>
+                  </>
                 )}
                 {selectedItem.status === "in_progress" && (
-                  <div className="flex space-x-1.5">
-                    <Button
-                      size="sm"
-                      onClick={() => handleTriggerRun(selectedItem.id)}
-                      isLoading={triggeringRunId === selectedItem.id}
-                      leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-                    >
-                      {agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model
-                        ? `Run Agent (${agents.find((a) => a.id === selectedItem.assignee_agent_id)?.llm_model})`
-                        : "Run Agent"}
-                    </Button>
+                  <>
+                    {(() => {
+                      const assigned = agents.find((a) => a.id === selectedItem.assignee_agent_id);
+                      return (
+                        <Button
+                          size="sm"
+                          onClick={() => handleTriggerRun(selectedItem.id)}
+                          isLoading={triggeringRunId === selectedItem.id}
+                          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                        >
+                          <span>{triggeringRunId === selectedItem.id ? "Menjalankan..." : "Run Agent"}</span>
+                          {assigned?.llm_model && triggeringRunId !== selectedItem.id && (
+                            <span className="text-[10px] font-mono opacity-80 font-normal">
+                              ({getCleanModelBadge(assigned.llm_model)})
+                            </span>
+                          )}
+                        </Button>
+                      );
+                    })()}
                     <Button size="sm" variant="outline" onClick={() => handleTransition(selectedItem.id, "in_review")}>
-                      Manual Review →
+                      Review →
                     </Button>
-                  </div>
+                  </>
                 )}
                 {selectedItem.status === "in_review" && (
-                  <div className="flex space-x-1.5">
+                  <>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleOpenLatestRun(selectedItem.id)}
                       leftIcon={<Terminal className="w-3.5 h-3.5" />}
                     >
-                      View Run & Diffs
+                      Hasil Run & Diffs
                     </Button>
                     <Button size="sm" variant="primary" onClick={() => handleTransition(selectedItem.id, "done")}>
-                      Approve Done ✓
+                      Setujui (Approve) ✓
                     </Button>
-                  </div>
+                  </>
                 )}
                 {selectedItem.status === "done" && (
                   <Button
@@ -1608,7 +1645,7 @@ export default function ScrumBoardPage({
                     onClick={() => handleOpenLatestRun(selectedItem.id)}
                     leftIcon={<FileCode className="w-3.5 h-3.5" />}
                   >
-                    View Run Artifacts
+                    Lihat Artefak
                   </Button>
                 )}
               </div>

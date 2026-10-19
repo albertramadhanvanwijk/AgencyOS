@@ -37,6 +37,7 @@ import {
   CheckCircle,
   Kanban,
   ListTodo,
+  Calendar,
 } from "lucide-react";
 
 interface AgentRecommendation {
@@ -89,6 +90,7 @@ interface WorkItem {
   definition_of_done: string[];
   assignee_agent_id?: string;
   assignee_name?: string;
+  sprint_id?: string;
   blocker_reason?: string;
 }
 
@@ -155,6 +157,19 @@ interface Agent {
   title: string;
 }
 
+interface Sprint {
+  id: string;
+  project_id: string;
+  name: string;
+  goal?: string;
+  status: "planning" | "active" | "completed";
+  capacity_points: number;
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  items_count?: number;
+}
+
 const COLUMNS = [
   { id: "backlog", label: "Backlog", description: "Unrefined or awaiting criteria" },
   { id: "ready", label: "Ready", description: "Criteria verified, ready for sprint" },
@@ -163,13 +178,23 @@ const COLUMNS = [
   { id: "done", label: "Done", description: "Verified & audited delivery" },
 ];
 
-export default function ScrumBoardPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ScrumBoardPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ sprint?: string }>;
+}) {
   const resolvedParams = use(params);
+  const resolvedSearchParams = searchParams ? use(searchParams) : undefined;
   const projectId = resolvedParams.id;
+  const initialSprintParam = resolvedSearchParams?.sprint;
 
   const [project, setProject] = useState<Project | null>(null);
   const [items, setItems] = useState<WorkItem[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [selectedSprintFilter, setSelectedSprintFilter] = useState<string>(initialSprintParam || "active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transitionError, setTransitionError] = useState<string | null>(null);
@@ -220,15 +245,19 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
   const [activeArtifactTab, setActiveArtifactTab] = useState<string>("patch.diff");
   const [activeRunTab, setActiveRunTab] = useState<"logs" | "quality" | "artifacts">("logs");
 
-  const fetchBoardData = useCallback(async () => {
+  const fetchBoardData = useCallback(async (filterOverride?: string) => {
     try {
       setLoading(true);
       setError(null);
-      const [projRes, itemsRes, agentsRes, capRes] = await Promise.all([
+      const targetFilter = filterOverride !== undefined ? filterOverride : selectedSprintFilter;
+      const sprintCapParam = targetFilter !== "active" && targetFilter !== "all" ? `?sprint_id=${targetFilter}` : "";
+
+      const [projRes, itemsRes, agentsRes, capRes, sprintsRes] = await Promise.all([
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}`),
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/work-items`),
         fetch(`http://127.0.0.1:8000/api/v1/workforce/agents`),
-        fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprint-capacity`),
+        fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprint-capacity${sprintCapParam}`),
+        fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints`),
       ]);
 
       if (!projRes.ok || !itemsRes.ok) {
@@ -239,11 +268,13 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
       const itemsData = await itemsRes.json();
       const agentsData = agentsRes.ok ? await agentsRes.json() : [];
       const capData = capRes.ok ? await capRes.json() : null;
+      const sprintsData = sprintsRes.ok ? await sprintsRes.json() : [];
 
       setProject(projData);
       setItems(itemsData);
       setAgents(agentsData);
       setSprintCapacity(capData);
+      setSprints(sprintsData);
       if (agentsData.length > 0) setNewAssigneeId(agentsData[0].id);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -254,7 +285,14 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, selectedSprintFilter]);
+
+  useEffect(() => {
+    if (initialSprintParam && initialSprintParam !== selectedSprintFilter) {
+      setSelectedSprintFilter(initialSprintParam);
+      fetchBoardData(initialSprintParam);
+    }
+  }, [initialSprintParam]);
 
   useEffect(() => {
     fetchBoardData();
@@ -656,6 +694,17 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  // Filter items based on selectedSprintFilter
+  const activeSprint = sprints.find((s) => s.status === "active");
+  const filteredBoardItems = items.filter((item) => {
+    if (selectedSprintFilter === "all") return true;
+    if (selectedSprintFilter === "active") {
+      if (activeSprint) return item.sprint_id === activeSprint.id;
+      return true;
+    }
+    return item.sprint_id === selectedSprintFilter;
+  });
+
   return (
     <AppShell>
       <PageHeader
@@ -671,7 +720,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchBoardData}
+              onClick={() => fetchBoardData()}
               leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
             >
               Refresh
@@ -748,9 +797,45 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center space-x-2">
               <BarChart2 className="w-4 h-4 text-accent" />
-              <span className="font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
-                {sprintCapacity.sprint_name || "Active Sprint"}
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs text-textMuted-light dark:text-textMuted-dark font-medium">Sprint:</span>
+                <select
+                  value={selectedSprintFilter}
+                  onChange={(e) => {
+                    const newFilter = e.target.value;
+                    setSelectedSprintFilter(newFilter);
+                    fetchBoardData(newFilter);
+                  }}
+                  className="h-7 px-2 text-xs font-semibold bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                >
+                  <option value="active">
+                    Active Sprint {activeSprint ? `(${activeSprint.name})` : "(Belum ada)"}
+                  </option>
+                  {sprints.filter((s) => s.status === "completed").length > 0 && (
+                    <optgroup label="Riwayat Sprint Selesai">
+                      {sprints
+                        .filter((s) => s.status === "completed")
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} (Selesai)
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                  {sprints.filter((s) => s.status === "planning").length > 0 && (
+                    <optgroup label="Sprint Perencanaan">
+                      {sprints
+                        .filter((s) => s.status === "planning")
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} (Planning)
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                  <option value="all">Semua Work Items</option>
+                </select>
+              </div>
               <StatusBadge
                 variant={sprintCapacity.sprint_status === "completed" ? "neutral" : "success"}
                 label={sprintCapacity.sprint_status === "completed" ? "Completed" : "Active Sprint"}
@@ -780,6 +865,11 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                 >
                   Selesaikan Sprint
                 </Button>
+              ) : sprintCapacity.sprint_status === "completed" ? (
+                <div className="flex items-center space-x-1 px-2 py-1 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark text-[11px] font-mono">
+                  <CheckCircle2 className="w-3 h-3 text-status-success" />
+                  <span>Arsip Sprint</span>
+                </div>
               ) : (
                 <Button
                   size="sm"
@@ -843,6 +933,29 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {/* Notice when viewing an archive / completed sprint */}
+      {sprintCapacity?.sprint_status === "completed" && (
+        <div className="p-3 rounded-md bg-accent/5 border border-accent/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center space-x-2 text-textPrimary-light dark:text-textPrimary-dark">
+            <CheckCircle2 className="w-4 h-4 text-status-success flex-shrink-0" />
+            <span>
+              Anda sedang melihat rekaman arsip dari <strong>{sprintCapacity.sprint_name}</strong> yang telah tuntas.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => {
+              setSelectedSprintFilter("active");
+              fetchBoardData("active");
+            }}
+          >
+            Beralih ke Active Sprint
+          </Button>
+        </div>
+      )}
+
       {loading ? (
         <TableSkeleton rows={4} />
       ) : error ? (
@@ -851,7 +964,7 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         /* Kanban Columns Grid */
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3.5 min-h-[550px] items-start">
           {COLUMNS.map((col) => {
-            const colItems = items.filter((item) => item.status === col.id);
+            const colItems = filteredBoardItems.filter((item) => item.status === col.id);
             const isOver = dragOverColId === col.id;
 
             return (

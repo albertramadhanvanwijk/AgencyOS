@@ -29,6 +29,9 @@ import {
   ArrowDownToLine,
   Check,
   Zap,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 interface WorkItem {
@@ -125,6 +128,14 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
   const [sprintGoal, setSprintGoal] = useState("");
   const [sprintCapacityPoints, setSprintCapacityPoints] = useState(20);
   const [sprintSubmitting, setSprintSubmitting] = useState(false);
+  const [expandedSprintIds, setExpandedSprintIds] = useState<Record<string, boolean>>({});
+
+  const toggleSprintExpanded = (sprintId: string) => {
+    setExpandedSprintIds((prev) => ({
+      ...prev,
+      [sprintId]: !prev[sprintId],
+    }));
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -700,7 +711,138 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
             })}
           </div>
 
-          {/* SECTION 2: PRODUCT BACKLOG INVENTORY (Gudang Backlog Jira) */}
+          {/* SECTION: COMPLETED SPRINTS (Riwayat Sprint Selesai) */}
+          {completedSprints.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-textMuted-light dark:text-textMuted-dark flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-status-success" />
+                  <span>Riwayat Sprint Selesai ({completedSprints.length})</span>
+                </h2>
+                <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                  Arsip sprint masa lalu & historis delivery
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {completedSprints.map((sprint) => {
+                  const sprintItems = items.filter((i) => i.sprint_id === sprint.id);
+                  const totalPoints = sprintItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
+                  const doneItems = sprintItems.filter((i) => i.status === "done");
+                  const donePoints = doneItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
+                  const isExpanded = !!expandedSprintIds[sprint.id];
+
+                  return (
+                    <div
+                      key={sprint.id}
+                      className="border border-borderBase-light dark:border-borderBase-dark rounded-lg bg-surface-light dark:bg-surface-dark overflow-hidden shadow-xs opacity-95 hover:opacity-100 transition-opacity"
+                    >
+                      {/* Accordion Header */}
+                      <div
+                        onClick={() => toggleSprintExpanded(sprint.id)}
+                        className="p-3 bg-surfaceSecondary-light/50 dark:bg-surfaceSecondary-dark/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="button"
+                            className="p-1 rounded text-textMuted-light dark:text-textMuted-dark"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                          </button>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
+                                {sprint.name}
+                              </span>
+                              <StatusBadge variant="neutral" label="Selesai" />
+                            </div>
+                            {sprint.goal && (
+                              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark mt-0.5">
+                                Goal: {sprint.goal}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-3 text-xs pl-7 sm:pl-0">
+                          <span className="font-mono text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                            Pencapaian: <strong className="text-status-success">{donePoints}</strong> / {totalPoints} SP ({totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 100}%)
+                          </span>
+                          <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark">
+                            • {doneItems.length} dari {sprintItems.length} task tuntas
+                          </span>
+                          <Link
+                            href={`/projects/${projectId}/board?sprint=${sprint.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button size="sm" variant="ghost" className="h-7 text-[11px]" rightIcon={<ArrowRight className="w-3 h-3" />}>
+                              Lihat di Board
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+
+                      {/* Expanded Item List */}
+                      {isExpanded && (
+                        <div className="border-t border-borderBase-light dark:border-borderBase-dark divide-y divide-borderBase-light/60 dark:divide-borderBase-dark/60">
+                          {sprintItems.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-textMuted-light dark:text-textMuted-dark italic">
+                              Tidak ada work item yang tercatat di sprint ini.
+                            </div>
+                          ) : (
+                            sprintItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className="p-2.5 px-4 flex items-center justify-between hover:bg-surfaceSecondary-light/30 dark:hover:bg-surfaceSecondary-dark/30 transition-colors text-xs"
+                              >
+                                <div className="flex items-center space-x-3 flex-1 min-w-0 pr-4">
+                                  <span className="font-mono font-semibold text-accent text-[11px] flex-shrink-0">
+                                    {item.key}
+                                  </span>
+                                  <span className="uppercase text-[9px] font-semibold px-1 py-0.2 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark text-textMuted-light dark:text-textMuted-dark flex-shrink-0">
+                                    {item.type}
+                                  </span>
+                                  <span
+                                    onClick={() => {
+                                      setSelectedItem(item);
+                                      fetchRecommendations(item.id);
+                                    }}
+                                    className="font-medium text-textPrimary-light dark:text-textPrimary-dark truncate hover:text-accent cursor-pointer"
+                                  >
+                                    {item.title}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center space-x-3 flex-shrink-0">
+                                  <StatusBadge
+                                    variant={getStatusBadgeVariant(item.status)}
+                                    label={item.status.replace("_", " ")}
+                                  />
+                                  <div className="flex items-center space-x-1 text-textMuted-light dark:text-textMuted-dark text-[11px] w-28 truncate">
+                                    <User className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{item.assignee_name || "Unassigned"}</span>
+                                  </div>
+                                  <span className="font-mono text-textMuted-light dark:text-textMuted-dark text-[11px] w-12 text-right">
+                                    {item.estimate_points} SP
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 3: PRODUCT BACKLOG INVENTORY (Gudang Backlog Jira) */}
           <div className="space-y-3 pt-4 border-t border-borderBase-light dark:border-borderBase-dark">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>

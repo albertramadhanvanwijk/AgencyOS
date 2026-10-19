@@ -48,69 +48,30 @@ class LiveLLMEngineAdapter(EngineAdapter):
         self._load_persisted_configs()
 
     def _load_persisted_configs(self) -> None:
-        """Loads LLM configurations from persistent disk storage, or initializes defaults."""
+        """Loads LLM configurations from persistent disk storage, or initializes empty."""
         if self._storage_path.exists():
             try:
                 with open(self._storage_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    if isinstance(data, dict) and data:
+                    if isinstance(data, dict):
                         self._llm_configs = data
                         # Sync active default config to adapter properties
+                        has_default = False
                         for item in self._llm_configs.values():
                             if item.get("is_default"):
                                 self._base_url = (item.get("base_url") or self._base_url).rstrip("/")
                                 self._model = item.get("model") or self._model
                                 if item.get("api_key"):
                                     self._api_key = item.get("api_key")
+                                has_default = True
+                        if not has_default:
+                            self._api_key = None
                         return
             except Exception:
                 pass
 
-        # Default fallback initialization when no config exists on disk
-        self._llm_configs = {
-            "gemini-default": {
-                "id": "gemini-default",
-                "name": "Google Gemini (Antigravity)",
-                "provider": "Google Gemini",
-                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-                "api_key": self._api_key,
-                "model": "gemini-2.0-flash",
-                "is_default": True,
-                "status": "not_configured" if not self._api_key else "verified",
-                "health_message": "Google Gemini API via Google AI Studio." if self._api_key else "API key belum dikonfigurasi.",
-                "available_models": [
-                    "gemini-2.0-flash",
-                    "gemini-2.5-pro",
-                    "gemini-2.5-flash",
-                    "gemini-1.5-pro",
-                    "gemini-1.5-flash",
-                ]
-            },
-            "openai-default": {
-                "id": "openai-default",
-                "name": "OpenAI Official Gateway",
-                "provider": "OpenAI",
-                "base_url": "https://api.openai.com/v1",
-                "api_key": None,
-                "model": "gpt-4o-mini",
-                "is_default": False,
-                "status": "not_configured",
-                "health_message": "API key belum dikonfigurasi.",
-                "available_models": ["gpt-4o-mini", "gpt-4o"]
-            },
-            "ollama-local": {
-                "id": "ollama-local",
-                "name": "Local Ollama Gateway",
-                "provider": "Ollama Local",
-                "base_url": "http://localhost:11434/v1",
-                "api_key": None,
-                "model": "llama3",
-                "is_default": False,
-                "status": "not_configured",
-                "health_message": "Endpoint lokal untuk offline inference.",
-                "available_models": ["llama3", "qwen2.5-coder", "deepseek-coder"]
-            }
-        }
+        # Default to empty LLM list
+        self._llm_configs = {}
         self._save_persisted_configs()
 
     def _save_persisted_configs(self) -> None:
@@ -211,6 +172,9 @@ class LiveLLMEngineAdapter(EngineAdapter):
             model=model
         )
 
+        if is_default or not self._llm_configs:
+            is_default = True
+
         item = {
             "id": llm_id,
             "name": data.get("name") or data.get("provider") or "Custom LLM",
@@ -260,6 +224,9 @@ class LiveLLMEngineAdapter(EngineAdapter):
                 first_k = next(iter(self._llm_configs))
                 self.set_default_llm(first_k)
             else:
+                if was_default:
+                    self._api_key = None
+                    self._model = ""
                 self._save_persisted_configs()
             return True
         return False

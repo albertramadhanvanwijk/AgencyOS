@@ -112,27 +112,39 @@ export default function SettingsPage() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [statusRes, adaptersRes, llmsRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/v1/system/status", { cache: "no-store" }),
-        fetch("http://127.0.0.1:8000/api/v1/system/adapters", { cache: "no-store" }),
-        fetch("http://127.0.0.1:8000/api/v1/system/llms", { cache: "no-store" }),
-      ]);
 
-      if (statusRes.ok) {
-        const statusData: SystemStatus = await statusRes.json();
-        setStatus(statusData);
-        if (statusData.engine_adapter_default) {
-          setDefaultEngineAdapter(statusData.engine_adapter_default);
-        }
-      }
+      // 1. Fetch LLMs immediately so cards render without delay
+      const fetchLlms = fetch("http://127.0.0.1:8000/api/v1/system/llms", { cache: "no-store" })
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            setLlms(data);
+          }
+        })
+        .catch(() => {});
 
-      if (adaptersRes.ok) {
-        setAdapters(await adaptersRes.json());
-      }
+      // 2. Fetch system status and adapters in parallel
+      const fetchStatus = fetch("http://127.0.0.1:8000/api/v1/system/status", { cache: "no-store" })
+        .then(async (res) => {
+          if (res.ok) {
+            const statusData: SystemStatus = await res.json();
+            setStatus(statusData);
+            if (statusData.engine_adapter_default) {
+              setDefaultEngineAdapter(statusData.engine_adapter_default);
+            }
+          }
+        })
+        .catch(() => {});
 
-      if (llmsRes.ok) {
-        setLlms(await llmsRes.json());
-      }
+      const fetchAdapters = fetch("http://127.0.0.1:8000/api/v1/system/adapters", { cache: "no-store" })
+        .then(async (res) => {
+          if (res.ok) {
+            setAdapters(await res.json());
+          }
+        })
+        .catch(() => {});
+
+      await Promise.all([fetchLlms, fetchStatus, fetchAdapters]);
     } catch {
       // Offline fallback handling
     } finally {
@@ -401,8 +413,29 @@ export default function SettingsPage() {
           </div>
 
           {/* Connected LLMs List */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-            {llms.map((item) => {
+          {llms.length === 0 ? (
+            <div className="py-12 border border-dashed border-borderBase-light dark:border-borderBase-dark rounded-md flex flex-col items-center justify-center text-center p-6 space-y-3 bg-surfaceSecondary-light/30 dark:bg-surfaceSecondary-dark/30">
+              <div className="w-11 h-11 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
+                <Bot className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 max-w-md">
+                <h3 className="text-sm font-semibold">Belum Ada LLM yang Terhubung</h3>
+                <p className="text-xs text-textMuted-light dark:text-textMuted-dark leading-relaxed">
+                  Secara default sistem belum mengaktifkan LLM provider apapun. Klik tombol di bawah untuk menambahkan API Key (Google Gemini, OpenAI, atau Ollama Local).
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleOpenAddModal}
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+              >
+                + Tambah LLM Pertama
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+              {llms.map((item) => {
               let badgeVariant: "success" | "warning" | "danger" | "neutral" = "neutral";
               let badgeLabel = "Belum Teruji";
 
@@ -515,22 +548,21 @@ export default function SettingsPage() {
                         <Edit className="w-3.5 h-3.5" />
                       </button>
 
-                      {llms.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteLlm(item.id)}
-                          className="p-1.5 rounded hover:bg-status-danger/10 text-textMuted-light dark:text-textMuted-dark hover:text-status-danger transition-colors"
-                          title="Hapus LLM"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteLlm(item.id)}
+                        className="p-1.5 rounded hover:bg-status-danger/10 text-textMuted-light dark:text-textMuted-dark hover:text-status-danger transition-colors"
+                        title="Hapus LLM"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+        )}
         </div>
 
         {/* Section 2: Platform Execution Engine & Isolation Boundary */}

@@ -22,10 +22,33 @@ def get_adapter(adapter_name: Optional[str] = None) -> EngineAdapter:
             
     return mock_adapter
 
-def list_adapters_info() -> List[Dict[str, Any]]:
+def list_adapters_info(check_live: bool = False) -> List[Dict[str, Any]]:
     results = []
     for name, adapter in ADAPTERS.items():
-        health = adapter.health_check()
+        if isinstance(adapter, LiveLLMEngineAdapter) and not check_live:
+            default_item = next((item for item in adapter._llm_configs.values() if item.get("is_default")), None)
+            if default_item:
+                health = {
+                    "status": default_item.get("status", "not_configured"),
+                    "message": default_item.get("health_message", ""),
+                    "available_models": default_item.get("available_models", []),
+                    "simulated": False
+                }
+            elif not adapter._llm_configs:
+                health = {
+                    "status": "not_configured",
+                    "message": "Belum ada LLM yang terhubung. Tambahkan koneksi API Key di Settings.",
+                    "simulated": False
+                }
+            else:
+                health = {
+                    "status": "not_configured",
+                    "message": "Pilih salah satu LLM sebagai default.",
+                    "simulated": False
+                }
+        else:
+            health = adapter.health_check()
+            
         caps = adapter.get_capabilities()
         results.append({
             "name": name,

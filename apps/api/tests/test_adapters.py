@@ -160,14 +160,15 @@ def test_health_check_two_stage_warning_when_model_restricted(monkeypatch):
 def test_llm_configs_disk_persistence_and_deletion(tmp_path, monkeypatch):
     test_storage = tmp_path / "llm_configs.json"
 
-    # Instance 1
+    # Instance 1: Clean start defaults to empty
     adapter1 = LiveLLMEngineAdapter()
     adapter1._storage_path = test_storage
-    adapter1._save_persisted_configs()
+    adapter1._load_persisted_configs()
 
     assert test_storage.exists()
+    assert len(adapter1.list_llm_configs()) == 0
 
-    # Add a new LLM
+    # Add a custom LLM
     custom_llm = adapter1.add_or_update_llm({
         "id": "custom-gemini-test",
         "name": "Custom Gemini Test",
@@ -177,20 +178,24 @@ def test_llm_configs_disk_persistence_and_deletion(tmp_path, monkeypatch):
         "is_default": False
     })
     assert custom_llm["id"] == "custom-gemini-test"
+    # First added LLM is automatically default
+    assert custom_llm["is_default"] is True
 
-    # Delete an LLM
-    assert adapter1.delete_llm("ollama-local") is True
-    assert "ollama-local" not in adapter1._llm_configs
-
-    # Instance 2 (simulating server reboot / reload)
+    # Instance 2 (simulating reboot): Custom LLM is preserved
     adapter2 = LiveLLMEngineAdapter()
     adapter2._storage_path = test_storage
     adapter2._load_persisted_configs()
-
-    # Verify custom LLM survived reload
     assert "custom-gemini-test" in adapter2._llm_configs
-    # Verify deleted LLM did NOT reappear
-    assert "ollama-local" not in adapter2._llm_configs
+
+    # Delete the last remaining LLM: should succeed and leave empty state
+    assert adapter2.delete_llm("custom-gemini-test") is True
+    assert len(adapter2.list_llm_configs()) == 0
+
+    # Instance 3 (reboot after deleting all): stays clean and empty
+    adapter3 = LiveLLMEngineAdapter()
+    adapter3._storage_path = test_storage
+    adapter3._load_persisted_configs()
+    assert len(adapter3.list_llm_configs()) == 0
 
 
 

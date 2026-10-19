@@ -1240,25 +1240,32 @@ export default function ScrumBoardPage({
           <span>1. Dokumen PRD</span>
         </Link>
         <Link
+          href={`/projects/${projectId}/architecture`}
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
+        >
+          <Layers className="w-4 h-4" />
+          <span>2. Arsitektur & Desain</span>
+        </Link>
+        <Link
           href={`/projects/${projectId}/backlog`}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
         >
           <ListTodo className="w-4 h-4" />
-          <span>2. Backlog & Sprints</span>
+          <span>3. Backlog & Sprints</span>
         </Link>
         <Link
           href={`/projects/${projectId}/board`}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-accent/10 text-accent border border-accent/20 transition-colors shrink-0"
         >
           <Kanban className="w-4 h-4" />
-          <span>3. Papan Scrum (Board)</span>
+          <span>4. Papan Scrum (Board)</span>
         </Link>
         <Link
           href={`/projects/${projectId}/analytics`}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors shrink-0"
         >
           <BarChart2 className="w-4 h-4" />
-          <span>4. Analitik & Retro</span>
+          <span>5. Analitik & Retro</span>
         </Link>
       </div>
 

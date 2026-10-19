@@ -30,6 +30,7 @@ class Project(Base):
     sprints = relationship("Sprint", back_populates="project", cascade="all, delete-orphan")
     work_items = relationship("WorkItem", back_populates="project", cascade="all, delete-orphan")
     prd = relationship("ProjectPRD", back_populates="project", uselist=False, cascade="all, delete-orphan")
+    architecture = relationship("ProjectArchitecture", back_populates="project", uselist=False, cascade="all, delete-orphan")
 
 class Sprint(Base):
     __tablename__ = "sprints"
@@ -87,3 +88,37 @@ class ProjectPRD(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", back_populates="prd")
+
+
+class ProjectArchitecture(Base):
+    """
+    Formal System Architecture & Technical Design Document (TDD).
+    Formulated based on the approved PRD.
+    Defines database entity schemas, API endpoints, system components,
+    security protocols, and data flow.
+    """
+    __tablename__ = "project_architectures"
+
+    id = Column(String(64), primary_key=True, default=generate_uuid)
+    project_id = Column(String(64), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True)
+    version = Column(Integer, default=1)
+    status = Column(String(32), default="draft")  # draft, in_review, approved
+
+    # Core Architecture Sections
+    system_overview = Column(Text, nullable=True)
+    tech_stack = Column(JSON, default=dict)  # {"frontend": "...", "backend": "...", "database": "...", "caching": "...", "ci_cd": "..."}
+    database_entities = Column(JSON, default=list)  # [{"name": "User", "table_name": "users", "description": "...", "fields": [...], "relationships": [...]}]
+    api_endpoints = Column(JSON, default=list)  # [{"module": "Auth", "method": "POST", "path": "/api/v1/auth/login", "description": "...", "request_body": "...", "response_body": "...", "auth_required": False}]
+    component_modules = Column(JSON, default=list)  # [{"name": "AuthModule", "type": "backend|frontend|service", "responsibilities": [...], "dependencies": [...]}]
+    security_specs = Column(JSON, default=list)  # [{"category": "Authentication", "mechanism": "...", "description": "..."}]
+    data_flow_diagram = Column(Text, nullable=True)  # Mermaid.js graph or markdown diagram
+
+    # Human Sign-Off Gate
+    approved_by = Column(String(128), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project", back_populates="architecture")
+

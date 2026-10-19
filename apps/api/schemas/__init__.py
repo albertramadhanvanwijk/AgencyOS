@@ -11,6 +11,11 @@ from apps.api.schemas.prd import (
     ProjectPRDOut, PRDApproveIn, PRDDiscoveryIn,
     FunctionalRequirement, TargetUserPersona, UserJourney
 )
+from apps.api.schemas.architecture import (
+    ProjectArchitectureOut, ArchitectureGenerateIn, ArchitectureApproveIn,
+    DatabaseEntitySpec, DatabaseFieldSpec, ApiEndpointSpec,
+    ComponentModuleSpec, SecuritySpec, TechStackSpec
+)
 
 __all__ = [
     "DepartmentBase", "DepartmentCreate", "DepartmentOut",
@@ -18,4 +23,7 @@ __all__ = [
     "AIAgentBase", "AIAgentCreate", "AIAgentUpdate", "AIAgentOut",
     "AgentSkillOut", "AgentProfileVersionOut",
     "ProjectPRDOut", "PRDApproveIn", "PRDDiscoveryIn",
+    "ProjectArchitectureOut", "ArchitectureGenerateIn", "ArchitectureApproveIn",
+    "DatabaseEntitySpec", "DatabaseFieldSpec", "ApiEndpointSpec",
+    "ComponentModuleSpec", "SecuritySpec", "TechStackSpec"
 ]

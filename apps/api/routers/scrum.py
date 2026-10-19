@@ -1,10 +1,12 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
 from apps.api.models import WorkItem, Project, AIAgent, AuditEvent
 from apps.api.schemas.scrum import WorkItemUpdate, WorkItemOut
+from apps.api.schemas.scheduler import AgentRecommendationOut, AssignAgentRequest
+from apps.api.services.scheduler import scheduler_service
 
 router = APIRouter(prefix="/work-items", tags=["Scrum & Work Items"])
 
@@ -247,4 +249,68 @@ def approve_work_item(
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=item.project.name if item.project else None,
     )
+
+
+@router.get("/{item_id}/recommend-assignees", response_model=List[AgentRecommendationOut])
+def get_recommended_assignees(item_id: str, db: Session = Depends(get_db)):
+    """
+    Menghitung rekomendasi penugasan agen terbaik untuk work item ini
+    berdasarkan analisis kesesuaian skill, peran, kualifikasi, dan kapasitas.
+    """
+    item = db.query(WorkItem).filter(
+        (WorkItem.id == item_id) | (WorkItem.key == item_id.upper())
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+
+    return scheduler_service.recommend_assignees(db, item)
+
+
+@router.post("/{item_id}/assign", response_model=WorkItemOut)
+def assign_agent_to_work_item(
+    item_id: str,
+    assign_req: AssignAgentRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Menugaskan agen ke work item secara aman dengan validasi konkurensi dan audit trail.
+    """
+    item = db.query(WorkItem).filter(
+        (WorkItem.id == item_id) | (WorkItem.key == item_id.upper())
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found.")
+
+    try:
+        updated_item = scheduler_service.assign_agent(
+            db=db,
+            work_item=item,
+            agent_id=assign_req.agent_id,
+            actor=assign_req.actor or "Scrum Master",
+            rationale=assign_req.rationale
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return WorkItemOut(
+        id=updated_item.id,
+        project_id=updated_item.project_id,
+        sprint_id=updated_item.sprint_id,
+        key=updated_item.key,
+        type=updated_item.type,
+        title=updated_item.title,
+        description=updated_item.description,
+        status=updated_item.status,
+        priority=updated_item.priority,
+        estimate_points=updated_item.estimate_points,
+        acceptance_criteria=updated_item.acceptance_criteria or [],
+        definition_of_done=updated_item.definition_of_done or [],
+        assignee_agent_id=updated_item.assignee_agent_id,
+        blocker_reason=updated_item.blocker_reason,
+        created_at=updated_item.created_at,
+        updated_at=updated_item.updated_at,
+        assignee_name=updated_item.assignee.name if updated_item.assignee else None,
+        project_name=updated_item.project.name if updated_item.project else None,
+    )
+
 

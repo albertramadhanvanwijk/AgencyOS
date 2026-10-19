@@ -30,7 +30,48 @@ import {
   FileCode,
   ShieldCheck,
   Layers,
+  Users,
+  Zap,
+  TrendingUp,
+  BarChart2,
+  CheckCircle,
 } from "lucide-react";
+
+interface AgentRecommendation {
+  agent_id: string;
+  name: string;
+  role_name: string;
+  department_name: string;
+  match_score: number;
+  qualification_state: string;
+  current_concurrency: number;
+  max_concurrency: number;
+  matched_skills: string[];
+  rationale: string;
+  is_recommended: boolean;
+}
+
+interface AgentCapacityItem {
+  agent_id: string;
+  name: string;
+  role_name: string;
+  department_name: string;
+  assigned_items_count: number;
+  assigned_points: number;
+  current_concurrency: number;
+  max_concurrency: number;
+}
+
+interface SprintCapacity {
+  sprint_id?: string;
+  sprint_name?: string;
+  sprint_status?: string;
+  total_capacity_points: number;
+  allocated_points: number;
+  completed_points: number;
+  utilization_rate: number;
+  agent_allocations: AgentCapacityItem[];
+}
 
 interface WorkItem {
   id: string;
@@ -149,6 +190,15 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
   // Inspect Modal
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
 
+  // Sprint Capacity & Team Allocation State
+  const [sprintCapacity, setSprintCapacity] = useState<SprintCapacity | null>(null);
+
+  // Smart Scheduler Recommendation State
+  const [recommendations, setRecommendations] = useState<AgentRecommendation[]>([]);
+  const [loadingRecs, setLoadingRecs] = useState(false);
+  const [assigningAgentId, setAssigningAgentId] = useState<string | null>(null);
+  const [showRecsSection, setShowRecsSection] = useState(false);
+
   // Execution Run State
   const [activeRun, setActiveRun] = useState<ExecutionRun | null>(null);
   const [runLogs, setRunLogs] = useState<RunLog[]>([]);
@@ -163,10 +213,11 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
     try {
       setLoading(true);
       setError(null);
-      const [projRes, itemsRes, agentsRes] = await Promise.all([
+      const [projRes, itemsRes, agentsRes, capRes] = await Promise.all([
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}`),
         fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/work-items`),
         fetch(`http://127.0.0.1:8000/api/v1/workforce/agents`),
+        fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprint-capacity`),
       ]);
 
       if (!projRes.ok || !itemsRes.ok) {
@@ -176,10 +227,12 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
       const projData = await projRes.json();
       const itemsData = await itemsRes.json();
       const agentsData = agentsRes.ok ? await agentsRes.json() : [];
+      const capData = capRes.ok ? await capRes.json() : null;
 
       setProject(projData);
       setItems(itemsData);
       setAgents(agentsData);
+      setSprintCapacity(capData);
       if (agentsData.length > 0) setNewAssigneeId(agentsData[0].id);
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -261,6 +314,83 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
     if (!item || item.status === targetStatus) return;
 
     await handleTransition(itemId, targetStatus);
+  };
+
+  const fetchRecommendations = async (itemId: string) => {
+    try {
+      setLoadingRecs(true);
+      setTransitionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}/recommend-assignees`);
+      if (!res.ok) {
+        throw new Error("Failed to load agent recommendations");
+      }
+      const data: AgentRecommendation[] = await res.json();
+      setRecommendations(data);
+      setShowRecsSection(true);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setTransitionError(err.message);
+      }
+    } finally {
+      setLoadingRecs(false);
+    }
+  };
+
+  const handleAssignAgent = async (itemId: string, agentId: string, rationale?: string) => {
+    try {
+      setAssigningAgentId(agentId);
+      setTransitionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/work-items/${itemId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_id: agentId,
+          actor: "Agency Operator",
+          rationale: rationale || "Assigned via Smart Recommendation",
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || "Failed to assign agent");
+      }
+
+      const updatedItem: WorkItem = await res.json();
+      setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
+      if (selectedItem?.id === updatedItem.id) {
+        setSelectedItem(updatedItem);
+      }
+      setShowRecsSection(false);
+      await fetchBoardData();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setTransitionError(err.message);
+      }
+    } finally {
+      setAssigningAgentId(null);
+    }
+  };
+
+  const handleUpdateSprintStatus = async (sprintId: string, status: string) => {
+    try {
+      setTransitionError(null);
+      const res = await fetch(`http://127.0.0.1:8000/api/v1/projects/${projectId}/sprints/${sprintId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.detail || "Failed to update sprint status");
+      }
+
+      await fetchBoardData();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setTransitionError(err.message);
+      }
+    }
   };
 
   const handleTriggerRun = async (workItemId: string) => {
@@ -525,6 +655,98 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {/* Sprint Capacity & Multi-Agent Allocation Bar */}
+      {sprintCapacity && (
+        <div className="p-3.5 rounded-md bg-surface-light dark:bg-surface-dark border border-borderBase-light dark:border-borderBase-dark space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <BarChart2 className="w-4 h-4 text-accent" />
+              <span className="font-semibold text-xs text-textPrimary-light dark:text-textPrimary-dark">
+                {sprintCapacity.sprint_name || "Active Sprint"}
+              </span>
+              <StatusBadge
+                variant={sprintCapacity.sprint_status === "completed" ? "neutral" : "success"}
+                label={sprintCapacity.sprint_status === "completed" ? "Completed" : "Active Sprint"}
+              />
+            </div>
+
+            <div className="flex items-center space-x-3 text-xs">
+              <div className="flex items-center space-x-1.5 font-mono">
+                <span className="text-textMuted-light dark:text-textMuted-dark">Beban Sprint:</span>
+                <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                  {sprintCapacity.allocated_points} / {sprintCapacity.total_capacity_points} SP
+                </span>
+                <span className="text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                  ({sprintCapacity.utilization_rate}%)
+                </span>
+              </div>
+              <div className="flex items-center space-x-1 font-mono text-status-success">
+                <span>• Selesai:</span>
+                <span className="font-semibold">{sprintCapacity.completed_points} SP</span>
+              </div>
+              {sprintCapacity.sprint_id && sprintCapacity.sprint_status === "active" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleUpdateSprintStatus(sprintCapacity.sprint_id!, "completed")}
+                  leftIcon={<CheckCircle className="w-3.5 h-3.5" />}
+                >
+                  Selesaikan Sprint
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full h-2 rounded-full bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark overflow-hidden">
+            <div
+              className={`h-full transition-all duration-300 rounded-full ${
+                sprintCapacity.utilization_rate > 100
+                  ? "bg-status-danger"
+                  : sprintCapacity.utilization_rate > 80
+                  ? "bg-status-warning"
+                  : "bg-status-success"
+              }`}
+              style={{ width: `${Math.min(100, sprintCapacity.utilization_rate)}%` }}
+            />
+          </div>
+
+          {/* Active Agents Allocation Chips */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 text-xs">
+            <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark flex items-center space-x-1">
+              <Users className="w-3.5 h-3.5" />
+              <span>Alokasi Agen ({sprintCapacity.agent_allocations.length}):</span>
+            </span>
+            {sprintCapacity.agent_allocations.length === 0 ? (
+              <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark italic">
+                Belum ada agen yang ditugaskan ke work item pada sprint ini.
+              </span>
+            ) : (
+              sprintCapacity.agent_allocations.map((alloc) => (
+                <div
+                  key={alloc.agent_id}
+                  className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-[11px]"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  <span className="font-medium text-textPrimary-light dark:text-textPrimary-dark">
+                    {alloc.name}
+                  </span>
+                  <span className="text-textMuted-light dark:text-textMuted-dark text-[10px]">
+                    ({alloc.role_name})
+                  </span>
+                  <span className="font-mono font-semibold text-accent text-[10px]">
+                    {alloc.assigned_points} SP
+                  </span>
+                  <span className="text-[9px] px-1 rounded bg-canvas-light dark:bg-canvas-dark border border-borderBase-light/40 dark:border-borderBase-dark/40 text-textMuted-light dark:text-textMuted-dark font-mono">
+                    {alloc.current_concurrency}/{alloc.max_concurrency} slot
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <TableSkeleton rows={4} />
       ) : error ? (
@@ -620,6 +842,19 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
                             <User className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{item.assignee_name || "Unassigned"}</span>
                           </div>
+                          {!item.assignee_name && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedItem(item);
+                                fetchRecommendations(item.id);
+                              }}
+                              className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent hover:bg-accent/20 flex items-center space-x-1 transition-colors"
+                            >
+                              <Zap className="w-2.5 h-2.5" />
+                              <span>Cocokkan</span>
+                            </button>
+                          )}
                         </div>
 
                         {/* Card Footer Actions with Clean Auto-Layout */}
@@ -869,14 +1104,133 @@ export default function ScrumBoardPage({ params }: { params: Promise<{ id: strin
               </div>
 
               {/* Assignee & Workspace */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-borderBase-light dark:border-borderBase-dark">
-                <div>
-                  <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Assigned Agent:</span>
-                  <span className="font-semibold">{selectedItem.assignee_name || "None"}</span>
+              <div className="pt-2 border-t border-borderBase-light dark:border-borderBase-dark space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Assigned Agent:</span>
+                    <span className="font-semibold flex items-center space-x-1.5 text-xs text-textPrimary-light dark:text-textPrimary-dark">
+                      <User className="w-3.5 h-3.5 text-accent" />
+                      <span>{selectedItem.assignee_name || "Belum Ditugaskan"}</span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Estimate:</span>
+                    <span className="font-mono font-semibold">{selectedItem.estimate_points} Story Points</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Estimate:</span>
-                  <span className="font-mono font-semibold">{selectedItem.estimate_points} Story Points</span>
+
+                {/* Smart Recommendation Button / Panel */}
+                <div className="pt-2 border-t border-borderBase-light/60 dark:border-borderBase-dark/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs flex items-center space-x-1.5 text-accent">
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Smart Staffing & Rekomendasi</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fetchRecommendations(selectedItem.id)}
+                      isLoading={loadingRecs}
+                      leftIcon={<Sparkles className="w-3 h-3 text-accent" />}
+                    >
+                      {recommendations.length > 0 && showRecsSection ? "Segarkan" : "Cari Agen Terbaik"}
+                    </Button>
+                  </div>
+
+                  {/* Recommendation Candidates List */}
+                  {showRecsSection && (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {loadingRecs ? (
+                        <div className="p-3 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                          Menganalisis kecocokan skill, peran & kapasitas agen...
+                        </div>
+                      ) : recommendations.length === 0 ? (
+                        <div className="p-2 text-center text-textMuted-light dark:text-textMuted-dark text-[11px]">
+                          Tidak ada agen aktif yang tersedia saat ini.
+                        </div>
+                      ) : (
+                        recommendations.map((rec) => {
+                          const isAssigned = selectedItem.assignee_agent_id === rec.agent_id;
+                          return (
+                            <div
+                              key={rec.agent_id}
+                              className={`p-2.5 rounded border transition-all text-xs space-y-1.5 ${
+                                rec.is_recommended
+                                  ? "border-accent/50 bg-accent/5 dark:bg-accent/10"
+                                  : "border-borderBase-light dark:border-borderBase-dark bg-surfaceSecondary-light/40 dark:bg-surfaceSecondary-dark/40"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
+                                  <span className="font-semibold text-textPrimary-light dark:text-textPrimary-dark">
+                                    {rec.name}
+                                  </span>
+                                  <span className="text-[10px] text-textMuted-light dark:text-textMuted-dark">
+                                    ({rec.role_name})
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-1.5">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold ${
+                                      rec.match_score >= 80
+                                        ? "bg-status-success/15 text-status-success border border-status-success/30"
+                                        : "bg-status-info/15 text-status-info border border-status-info/30"
+                                    }`}
+                                  >
+                                    {rec.match_score}% Cocok
+                                  </span>
+                                  {rec.is_recommended && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-accent text-white">
+                                      Best Fit
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-textMuted-light dark:text-textMuted-dark leading-tight">
+                                {rec.rationale}
+                              </p>
+
+                              {rec.matched_skills.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {rec.matched_skills.map((s, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="px-1.5 py-0.2 rounded text-[9px] bg-canvas-light dark:bg-canvas-dark border border-borderBase-light dark:border-borderBase-dark font-mono text-textPrimary-light dark:text-textPrimary-dark"
+                                    >
+                                      ✓ {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between pt-1 border-t border-borderBase-light/40 dark:border-borderBase-dark/40 text-[10px]">
+                                <span className="text-textMuted-light dark:text-textMuted-dark font-mono">
+                                  Slot Aktif: {rec.current_concurrency}/{rec.max_concurrency}
+                                </span>
+                                {isAssigned ? (
+                                  <span className="font-semibold text-status-success flex items-center space-x-1">
+                                    <Check className="w-3 h-3" />
+                                    <span>Sedang Ditugaskan</span>
+                                  </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAssignAgent(selectedItem.id, rec.agent_id, rec.rationale)}
+                                    isLoading={assigningAgentId === rec.agent_id}
+                                    leftIcon={<User className="w-3 h-3" />}
+                                  >
+                                    Tugaskan Agen
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

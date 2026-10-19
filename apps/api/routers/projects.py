@@ -1,5 +1,6 @@
 import os
 from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from apps.api.core.database import get_db
@@ -7,6 +8,8 @@ from apps.api.core.config import settings
 from apps.api.models import Project, Sprint, WorkItem, AuditEvent
 from apps.api.schemas.project import ProjectCreate, ProjectOut, SprintCreate, SprintOut
 from apps.api.schemas.scrum import WorkItemCreate, WorkItemOut
+from apps.api.schemas.scheduler import SprintCapacityOut
+from apps.api.services.scheduler import scheduler_service
 
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
 
@@ -276,3 +279,78 @@ def create_project_work_item(
         assignee_name=item.assignee.name if item.assignee else None,
         project_name=p.name,
     )
+
+
+@router.get("/{project_id}/sprint-capacity", response_model=SprintCapacityOut)
+def get_project_sprint_capacity(
+    project_id: str,
+    sprint_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Mengambil data kapasitas sprint, utilisasi story points, dan breakdown alokasi beban agen.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    return scheduler_service.get_sprint_capacity(db, project_id, sprint_id)
+
+
+class SprintStatusUpdate(BaseModel):
+    status: str # active, completed, planning
+
+
+@router.patch("/{project_id}/sprints/{sprint_id}/status", response_model=SprintOut)
+def update_sprint_status(
+    project_id: str,
+    sprint_id: str,
+    status_update: SprintStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Memulai (active) atau menyelesaikan (completed) sprint dengan audit trail.
+    """
+    sprint = db.query(Sprint).filter(
+        Sprint.id == sprint_id,
+        Sprint.project_id == project_id
+    ).first()
+    if not sprint:
+        raise HTTPException(status_code=404, detail="Sprint not found in this project.")
+
+    target_status = status_update.status.lower()
+    if target_status not in ["active", "completed", "planning"]:
+        raise HTTPException(status_code=400, detail="Invalid sprint status. Must be 'active', 'completed', or 'planning'.")
+
+    prev_status = sprint.status
+    sprint.status = target_status
+
+    db.add(AuditEvent(
+        actor="Scrum Master",
+        action="SPRINT_STATUS_CHANGED",
+        target_type="SPRINT",
+        target_id=sprint.id,
+        project_id=project_id,
+        policy_basis="SPRINT_LIFECYCLE_POLICY_V1",
+        details={
+            "sprint_name": sprint.name,
+            "from_status": prev_status,
+            "to_status": target_status,
+        }
+    ))
+
+    db.commit()
+    db.refresh(sprint)
+
+    return SprintOut(
+        id=sprint.id,
+        project_id=sprint.project_id,
+        name=sprint.name,
+        goal=sprint.goal,
+        status=sprint.status,
+        capacity_points=sprint.capacity_points,
+        start_date=sprint.start_date,
+        end_date=sprint.end_date,
+        created_at=sprint.created_at,
+    )
+

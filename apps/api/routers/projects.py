@@ -130,12 +130,12 @@ def create_project(proj_in: ProjectCreate, db: Session = Depends(get_db)):
     db.add(proj)
     db.flush()
 
-    # Initial default Sprint
+    # Initial default Sprint (starts in planning phase)
     sprint = Sprint(
         project_id=proj.id,
         name="Sprint 1: Kickoff & Setup",
         goal=f"Initial backlog and setup for {proj.name}",
-        status="active",
+        status="planning",
         capacity_points=20,
     )
     db.add(sprint)
@@ -513,8 +513,9 @@ def update_sprint_status(
     if target_status not in ["active", "completed", "planning"]:
         raise HTTPException(status_code=400, detail="Invalid sprint status. Must be 'active', 'completed', or 'planning'.")
 
-    # Enforce Jira/Scrum single active sprint rule
+    # Enforce Jira/Scrum sprint lifecycle discipline
     if target_status == "active":
+        # Rule 1: Only 1 active sprint allowed at a time
         other_active = db.query(Sprint).filter(
             Sprint.project_id == project_id,
             Sprint.id != sprint_id,
@@ -525,6 +526,32 @@ def update_sprint_status(
                 status_code=400,
                 detail=f"Tidak dapat memulai '{sprint.name}' karena '{other_active.name}' masih berlangsung. Selesaikan sprint aktif terlebih dahulu."
             )
+
+        # Rule 2: Sequential discipline - all prior sprints in project must be completed
+        all_sprints = (
+            db.query(Sprint)
+            .filter(Sprint.project_id == project_id)
+            .order_by(Sprint.created_at.asc(), Sprint.name.asc())
+            .all()
+        )
+        for prev in all_sprints:
+            if prev.id == sprint.id:
+                break
+            if prev.status != "completed":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tidak dapat memulai '{sprint.name}' karena '{prev.name}' belum selesai. Jalankan dan selesaikan sprint secara berurutan sesuai aturan Scrum."
+                )
+
+        # Transition sprint's backlog items to ready so agents can work
+        items = db.query(WorkItem).filter(WorkItem.sprint_id == sprint.id, WorkItem.status == "backlog").all()
+        for item in items:
+            item.status = "ready"
+
+        sprint.start_date = datetime.now(timezone.utc)
+
+    if target_status == "completed":
+        sprint.end_date = datetime.now(timezone.utc)
 
     prev_status = sprint.status
     sprint.status = target_status

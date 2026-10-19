@@ -701,6 +701,17 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
               const sprintItems = items.filter((i) => !i.parent_id && i.sprint_id === sprint.id);
               const totalPoints = sprintItems.reduce((acc, i) => acc + (i.estimate_points || 0), 0);
 
+              // Find if any prior sprint in chronological order is uncompleted
+              const sortedSprints = [...sprints].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+              const currentSprintIdx = sortedSprints.findIndex((s) => s.id === sprint.id);
+              const uncompletedPrevSprint =
+                currentSprintIdx > 0
+                  ? sortedSprints.slice(0, currentSprintIdx).find((s) => s.status !== "completed")
+                  : null;
+              const blockingSprint = activeSprint || uncompletedPrevSprint;
+
               return (
                 <div
                   key={sprint.id}
@@ -712,7 +723,11 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                         <span className="font-semibold text-sm text-textPrimary-light dark:text-textPrimary-dark">
                           {sprint.name}
                         </span>
-                        <StatusBadge variant="neutral" label="Future Sprint" />
+                        {sprint.status === "pending_approval" ? (
+                          <StatusBadge variant="warning" label="Pending Approval" />
+                        ) : (
+                          <StatusBadge variant="neutral" label="Future Sprint" />
+                        )}
                       </div>
                       {sprint.goal && (
                         <p className="text-xs text-textMuted-light dark:text-textMuted-dark">
@@ -725,19 +740,19 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                       <span className="font-mono text-textMuted-light dark:text-textMuted-dark">
                         Beban: <strong>{totalPoints}</strong> / {sprint.capacity_points} SP
                       </span>
-                      {activeSprint ? (
+                      {blockingSprint ? (
                         <div className="flex items-center space-x-2">
                           <span
                             className="hidden sm:inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark text-textMuted-light dark:text-textMuted-dark"
-                            title={`Sprint '${activeSprint.name}' sedang aktif. Aturan Scrum mewajibkan satu sprint aktif dalam satu waktu.`}
+                            title={`Sprint '${blockingSprint.name}' belum selesai. Selesaikan sprint tersebut terlebih dahulu sesuai aturan Scrum.`}
                           >
-                            <span>🔒</span> Selesaikan {activeSprint.name} dulu
+                            <span>🔒</span> Selesaikan {blockingSprint.name} dulu
                           </span>
                           <Button
                             size="sm"
                             variant="primary"
                             disabled
-                            title={`Sprint '${activeSprint.name}' sedang berlangsung. Selesaikan sprint aktif terlebih dahulu sebelum memulai sprint ini.`}
+                            title={`Sprint '${blockingSprint.name}' belum selesai. Selesaikan sprint tersebut terlebih dahulu sebelum memulai sprint ini.`}
                             leftIcon={<Play className="w-3.5 h-3.5" />}
                           >
                             Start Sprint
@@ -750,7 +765,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                             variant="primary"
                             leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                           >
-                            Tinjau di Board
+                            Tinjau & Setujui di Board
                           </Button>
                         </Link>
                       ) : (

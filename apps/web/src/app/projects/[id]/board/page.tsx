@@ -1316,8 +1316,8 @@ export default function ScrumBoardPage({
         </div>
       )}
 
-      {/* Sprint Start Approval Banner */}
-      {pendingSprint && items.length > 0 && (
+      {/* Sprint Start Approval Banner - only shown when no active sprint is running */}
+      {!activeSprint && pendingSprint && items.length > 0 && (
         <div className="p-4 rounded-lg bg-status-warning/10 border border-status-warning/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-start space-x-3 text-textPrimary-light dark:text-textPrimary-dark">
             <ShieldAlert className="w-5 h-5 text-status-warning flex-shrink-0 mt-0.5" />
@@ -4030,32 +4030,43 @@ export default function ScrumBoardPage({
                     >
                       Batal
                     </Button>
-                    {activeSprint && activeSprint.id !== targetSprint.id ? (
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark px-2.5 py-1 rounded">
-                          🔒 Selesaikan <strong>{activeSprint.name}</strong> terlebih dahulu
-                        </span>
+                    {(() => {
+                      const sortedSprints = [...sprints].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                      const currentIdx = sortedSprints.findIndex((s) => s.id === targetSprint?.id);
+                      const uncompletedPrev = currentIdx > 0 ? sortedSprints.slice(0, currentIdx).find((s) => s.status !== "completed") : null;
+                      const blocker = (activeSprint && activeSprint.id !== targetSprint?.id) ? activeSprint : uncompletedPrev;
+
+                      if (blocker) {
+                        return (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[11px] text-textMuted-light dark:text-textMuted-dark bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark px-2.5 py-1 rounded">
+                              🔒 Selesaikan <strong>{blocker.name}</strong> terlebih dahulu
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled
+                              title={`Sprint '${blocker.name}' belum selesai. Selesaikan sprint tersebut terlebih dahulu sebelum memulai sprint ini.`}
+                              leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                            >
+                              Setujui & Mulai Sprint Ini →
+                            </Button>
+                          </div>
+                        );
+                      }
+
+                      return (
                         <Button
                           size="sm"
                           variant="primary"
-                          disabled
-                          title={`Sprint '${activeSprint.name}' masih aktif. Selesaikan sprint aktif melalui Sprint Review & Retrospective terlebih dahulu.`}
+                          onClick={() => targetSprint && handleApproveStartSprint(targetSprint.id)}
+                          isLoading={approvingSprint}
                           leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                         >
                           Setujui & Mulai Sprint Ini →
                         </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => targetSprint && handleApproveStartSprint(targetSprint.id)}
-                        isLoading={approvingSprint}
-                        leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                      >
-                        Setujui & Mulai Sprint Ini →
-                      </Button>
-                    )}
+                      );
+                    })()}
                   </div>
                 </div>
               );

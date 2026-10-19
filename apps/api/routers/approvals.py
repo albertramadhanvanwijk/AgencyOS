@@ -36,6 +36,28 @@ def get_approvals_summary(db: Session = Depends(get_db)):
             .filter(Sprint.project_id == s.project_id, Sprint.id != s.id, Sprint.status == "active")
             .first()
         )
+
+        # Check if any previous sprint in chronological order is uncompleted
+        all_project_sprints = (
+            db.query(Sprint)
+            .filter(Sprint.project_id == s.project_id)
+            .order_by(Sprint.created_at.asc(), Sprint.name.asc())
+            .all()
+        )
+        uncompleted_prev = None
+        for prev in all_project_sprints:
+            if prev.id == s.id:
+                break
+            if prev.status != "completed":
+                uncompleted_prev = prev
+                break
+
+        can_start = (has_active_sprint is None) and (uncompleted_prev is None)
+        blocking_name = None
+        if has_active_sprint:
+            blocking_name = has_active_sprint.name
+        elif uncompleted_prev:
+            blocking_name = uncompleted_prev.name
         
         items = db.query(WorkItem).filter(WorkItem.sprint_id == s.id).all()
         stories_preview = [
@@ -64,8 +86,8 @@ def get_approvals_summary(db: Session = Depends(get_db)):
             "items_count": len(items),
             "total_points": sum(item.estimate_points or 0 for item in items),
             "stories_preview": stories_preview,
-            "can_start_now": has_active_sprint is None,
-            "blocking_active_sprint_name": has_active_sprint.name if has_active_sprint else None,
+            "can_start_now": can_start,
+            "blocking_active_sprint_name": blocking_name,
         })
 
     # 2. Pending Recruitment Requests

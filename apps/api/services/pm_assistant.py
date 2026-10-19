@@ -445,6 +445,22 @@ class PMAssistantService:
                 "Selesaikan sprint aktif melalui Sprint Review & Retrospective terlebih dahulu."
             )
 
+        # Rule 2: Sequential discipline - all prior sprints in project must be completed
+        all_sprints = (
+            db.query(Sprint)
+            .filter(Sprint.project_id == project_id)
+            .order_by(Sprint.created_at.asc(), Sprint.name.asc())
+            .all()
+        )
+        for prev in all_sprints:
+            if prev.id == sprint.id:
+                break
+            if prev.status != "completed":
+                raise ValueError(
+                    f"Tidak dapat memulai '{sprint.name}' karena '{prev.name}' belum selesai. "
+                    f"Selesaikan '{prev.name}' terlebih dahulu sesuai urutan Scrum."
+                )
+
         sprint.status = "active"
         sprint.approved_by = approved_by or "Project Owner"
         sprint.approved_at = datetime.now(timezone.utc)
@@ -525,6 +541,18 @@ class PMAssistantService:
         project_completed = False
         if next_sprint:
             next_sprint.status = "pending_approval"
+            # Rollover any unfinished items (not done) to the next sprint
+            unfinished_items = db.query(WorkItem).filter(
+                WorkItem.sprint_id == sprint.id,
+                WorkItem.status != "done"
+            ).all()
+            if unfinished_items:
+                for u_item in unfinished_items:
+                    u_item.sprint_id = next_sprint.id
+                    u_item.status = "backlog"
+                retrospective["action_items"].append(
+                    f"{len(unfinished_items)} user story belum selesai dialihkan (rollover) ke {next_sprint.name}."
+                )
         else:
             # All sprints completed! Check remaining backlog
             remaining_backlog = db.query(WorkItem).filter(

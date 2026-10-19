@@ -182,10 +182,19 @@ def create_project_sprint(
             s.status = "completed"
             s.end_date = datetime.now(timezone.utc)
 
+    # Format sprint name automatically with "Sprint {N}: {title}" if not already starting with "Sprint"
+    sprint_count = db.query(Sprint).filter(Sprint.project_id == p.id).count()
+    next_sprint_num = sprint_count + 1
+    raw_name = sprint_in.name.strip() if sprint_in.name else ""
+    if not raw_name.lower().startswith("sprint"):
+        formatted_name = f"Sprint {next_sprint_num}: {raw_name}" if raw_name else f"Sprint {next_sprint_num}"
+    else:
+        formatted_name = raw_name
+
     # Create the new sprint
     new_sprint = Sprint(
         project_id=p.id,
-        name=sprint_in.name.strip(),
+        name=formatted_name,
         goal=sprint_in.goal.strip() if sprint_in.goal else None,
         status=sprint_in.status or "active",
         capacity_points=sprint_in.capacity_points or 20,

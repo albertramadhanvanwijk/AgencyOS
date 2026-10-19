@@ -474,6 +474,13 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
           <Kanban className="w-4 h-4" />
           <span>Papan Scrum (Board)</span>
         </Link>
+        <Link
+          href={`/projects/${projectId}/analytics`}
+          className="flex items-center space-x-2 px-3 py-1.5 rounded-md text-xs font-medium text-textMuted-light dark:text-textMuted-dark hover:text-textPrimary-light dark:hover:text-textPrimary-dark hover:bg-surfaceSecondary-light dark:hover:bg-surfaceSecondary-dark transition-colors"
+        >
+          <BarChart2 className="w-4 h-4" />
+          <span>Analitik & Laporan Sprint</span>
+        </Link>
       </div>
 
       {/* Error alert banner */}

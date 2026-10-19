@@ -10,7 +10,9 @@ from apps.api.models import Project, Sprint, WorkItem, AuditEvent
 from apps.api.schemas.project import ProjectCreate, ProjectOut, SprintCreate, SprintOut
 from apps.api.schemas.scrum import WorkItemCreate, WorkItemOut
 from apps.api.schemas.scheduler import SprintCapacityOut
+from apps.api.schemas.analytics import SprintBurndownOut, ProjectVelocityOut
 from apps.api.services.scheduler import scheduler_service
+from apps.api.services.analytics import analytics_service
 
 router = APIRouter(prefix="/projects", tags=["Projects & Workspaces"])
 
@@ -441,4 +443,28 @@ def update_sprint_status(
         end_date=sprint.end_date,
         created_at=sprint.created_at,
     )
+
+
+@router.get("/{project_id}/analytics/burndown", response_model=SprintBurndownOut)
+def get_sprint_burndown_analytics(
+    project_id: str,
+    sprint_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Menghitung grafik burndown sprint (garis ideal vs aktual penyelesaian SP).
+    """
+    return analytics_service.get_sprint_burndown(db, project_id, sprint_id)
+
+
+@router.get("/{project_id}/analytics/velocity", response_model=ProjectVelocityOut)
+def get_project_velocity_analytics(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Menghitung metrik team velocity (kecepatan rata-rata penyelesaian SP antar-sprint).
+    """
+    return analytics_service.get_project_velocity(db, project_id)
+
 

@@ -797,7 +797,7 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                       {/* Dropdown to assign to a sprint */}
                       {sprints.filter((s) => s.status !== "completed").length > 0 && (
                         <select
-                          defaultValue=""
+                          value=""
                           onChange={(e) => {
                             if (e.target.value) {
                               handleMoveItemToSprint(item.id, e.target.value);
@@ -886,6 +886,35 @@ export default function BacklogPlanningPage({ params }: { params: Promise<{ id: 
                   <div>
                     <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Story Points:</span>
                     <span className="font-mono font-semibold">{selectedItem.estimate_points} SP</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <div>
+                    <span className="text-textMuted-light dark:text-textMuted-dark block text-[11px]">Sprint Terjadwal:</span>
+                    <span className="font-semibold text-accent">
+                      {sprints.find((s) => s.id === selectedItem.sprint_id)?.name || "Product Backlog (Unassigned)"}
+                    </span>
+                  </div>
+                  <div>
+                    <select
+                      value={selectedItem.sprint_id || ""}
+                      onChange={async (e) => {
+                        const newSprintId = e.target.value || null;
+                        await handleMoveItemToSprint(selectedItem.id, newSprintId);
+                        setSelectedItem({ ...selectedItem, sprint_id: newSprintId || undefined });
+                      }}
+                      className="h-7 px-2 text-[11px] bg-surfaceSecondary-light dark:bg-surfaceSecondary-dark border border-borderBase-light dark:border-borderBase-dark rounded text-textPrimary-light dark:text-textPrimary-dark focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="">Simpan di Product Backlog</option>
+                      {sprints
+                        .filter((s) => s.status !== "completed")
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.status})
+                          </option>
+                        ))}
+                    </select>
                   </div>
                 </div>
 

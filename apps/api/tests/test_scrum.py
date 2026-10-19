@@ -101,3 +101,50 @@ def test_project_and_scrum_state_machine(client):
     to_backlog_res = client.patch(f"/api/v1/work-items/{item_id}", json={"status": "backlog"})
     assert to_backlog_res.status_code == 200
     assert to_backlog_res.json()["status"] == "backlog"
+
+
+def test_product_backlog_creation_and_sprint_ejection(client):
+    # 1. PRJ-CORE has an active sprint seeded
+    sprints_res = client.get("/api/v1/projects/PRJ-CORE/sprints")
+    assert sprints_res.status_code == 200
+    sprints = sprints_res.json()
+    active_sprint = next((s for s in sprints if s["status"] == "active"), None)
+    assert active_sprint is not None
+
+    # 2. Create work item without sprint_id -> MUST stay in Product Backlog (sprint_id is None)
+    create_res = client.post("/api/v1/projects/PRJ-CORE/work-items", json={
+        "project_id": "PRJ-CORE",
+        "title": "Unplanned Roadmap Discovery Item",
+        "type": "story",
+        "priority": "medium",
+        "estimate_points": 2.0,
+        "acceptance_criteria": []
+    })
+    assert create_res.status_code == 201
+    created_item = create_res.json()
+    assert created_item["sprint_id"] is None
+    assert created_item["status"] == "backlog"
+    item_id = created_item["id"]
+
+    # 3. Move work item into active sprint
+    assign_res = client.patch(f"/api/v1/work-items/{item_id}", json={
+        "sprint_id": active_sprint["id"]
+    })
+    assert assign_res.status_code == 200
+    assert assign_res.json()["sprint_id"] == active_sprint["id"]
+
+    # 4. Eject work item from sprint back to Product Backlog with sprint_id: null
+    eject_res = client.patch(f"/api/v1/work-items/{item_id}", json={
+        "sprint_id": None,
+        "status": "backlog"
+    })
+    assert eject_res.status_code == 200
+    ejected_item = eject_res.json()
+    assert ejected_item["sprint_id"] is None
+    assert ejected_item["status"] == "backlog"
+
+    # 5. Verify through GET endpoint that database persisted sprint_id as None
+    get_res = client.get(f"/api/v1/work-items/{item_id}")
+    assert get_res.status_code == 200
+    assert get_res.json()["sprint_id"] is None
+

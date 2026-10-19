@@ -113,11 +113,11 @@ def update_work_item(
         item.acceptance_criteria = update_in.acceptance_criteria
     if update_in.definition_of_done is not None:
         item.definition_of_done = update_in.definition_of_done
-    if update_in.assignee_agent_id is not None:
-        item.assignee_agent_id = update_in.assignee_agent_id
-    if update_in.sprint_id is not None:
-        item.sprint_id = update_in.sprint_id
-    if update_in.blocker_reason is not None:
+    if "assignee_agent_id" in update_in.model_fields_set:
+        item.assignee_agent_id = update_in.assignee_agent_id if update_in.assignee_agent_id else None
+    if "sprint_id" in update_in.model_fields_set:
+        item.sprint_id = update_in.sprint_id if update_in.sprint_id else None
+    if "blocker_reason" in update_in.model_fields_set:
         item.blocker_reason = update_in.blocker_reason
 
     # Audit event on status change

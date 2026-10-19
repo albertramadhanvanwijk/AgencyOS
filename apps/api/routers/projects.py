@@ -313,12 +313,8 @@ def create_project_work_item(
     p.item_counter += 1
     generated_key = f"{p.key}-{p.item_counter}"
 
-    # Default to project active sprint if not specified
-    sprint_id = item_in.sprint_id
-    if not sprint_id:
-        active_sprint = next((s for s in p.sprints if s.status == "active"), None)
-        if active_sprint:
-            sprint_id = active_sprint.id
+    # Keep sprint_id as specified (None means Product Backlog)
+    sprint_id = item_in.sprint_id if item_in.sprint_id else None
 
     item = WorkItem(
         project_id=p.id,
